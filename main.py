@@ -1,10 +1,11 @@
 import datetime
 import hashlib
 import os
+import re
 import sqlite3
 import uuid
 
-from flask import Flask, jsonify, request, _app_ctx_stack
+from flask import Flask, jsonify, _app_ctx_stack, request
 
 DATABASE = 'db.db'
 
@@ -39,38 +40,69 @@ def query_db(query, args=(), one=False):
     return (rv[0] if rv else None) if one else rv
 
 
-@app.route('/homepage')
+def checkmail(email):
+    EMAIL_REGEX = re.compile(r"'\w+[.|\w]\w+@\w+[.]\w+[.|\w+]\w+'")
+    if not EMAIL_REGEX.match(email):
+        return False
+    return True
+
+
+def checkunique(uid, username):
+    cursor = get_db().execute('SELECT * FROM users WHERE user_id=(%s) OR username=(%s)' % uid % username)
+    get_db().commit()
+    if cursor is None:
+        return True
+    return False
+
+
+@app.route('/')
 def homepage():
     return '<h2 color="green">  ברוכים הבאים לאתר מתמטיקל </h2>'
 
 
 @app.route('/getuser')
-@app.route('/register')
+@app.route('/register', methods=["POST"])
 def register():
     registerdata = request.get_json(force=True)
     username = registerdata["username"]
     password = registerdata["password"]
     email = registerdata["email"]
     salt = os.urandom(64)
-    password_hashed = hashlib.pbkdf2_hmac('sha256', password, salt, 100000)  # and salted
     user_id = str(uuid.uuid4())
     registration_date = datetime.datetime.utcnow().isoformat()
     last_login_date = registration_date
-    query = query_db('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
-                     (user_id, username, password_hashed, salt, email, registration_date, last_login_date))
-    result = {
-        "success": True if query else False,
-        "error_message": None
-    }
-    return jsonify(result)
+    password_hashed = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), salt, 100000)  # and salted
+    if checkmail(email) == True and checkunique(user_id, username) == True:
+        cursor = get_db().execute('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
+                                  [user_id, username, password_hashed, salt, email, registration_date, last_login_date])
+        get_db().commit()
+        if cursor:
+            result = {
+                "success": False,
+                "error_message": "registratiion failed!"
+            }
+
+        else:
+            result = {
+                "success": True,
+                "error_message": "registratiion successfull!!!!"
+            }
+        cursor.close()
+        return jsonify(result)
+    else:
+        result = {
+            "success": False,
+            "error_message": "registratiion failed!"
+        }
+        return jsonify(result)
 
 
-@app.route('/login')
+@app.route('/login', methods=["POST", "GET"])
 def login():
     logindata = request.get_json(force=True)
     username = logindata["username"]
     password = logindata["password"]
-    salt = query_db("SELECT salt FROM users WHERE username=?")
+    salt = query_db('SELECT salt FROM users WHERE username=?', (username))
     query = query_db('SELECT * FROM users WHERE username=? AND password=?',
                      (username, hashlib.pbkdf2_hmac('sha256', password, salt, 100000)))
     if query is None:
@@ -84,4 +116,4 @@ def login():
     return jsonify(result)
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)
