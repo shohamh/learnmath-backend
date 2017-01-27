@@ -1,4 +1,8 @@
+import datetime
+import hashlib
+import os
 import sqlite3
+import uuid
 
 from flask import Flask, jsonify, request, _app_ctx_stack
 
@@ -47,7 +51,13 @@ def register():
     username = registerdata["username"]
     password = registerdata["password"]
     email = registerdata["email"]
-    query = query_db('INSERT INTO users VALUES(?,?,?)', [username, password, email])
+    salt = os.urandom(64)
+    password_hashed = hashlib.pbkdf2_hmac('sha256', password, salt, 100000)  # and salted
+    user_id = str(uuid.uuid4())
+    registration_date = datetime.datetime.utcnow().isoformat()
+    last_login_date = registration_date
+    query = query_db('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
+                     (user_id, username, password_hashed, salt, email, registration_date, last_login_date))
     result = {
         "success": True if query else False,
         "error_message": None
@@ -60,7 +70,9 @@ def login():
     logindata = request.get_json(force=True)
     username = logindata["username"]
     password = logindata["password"]
-    query = query_db('SELECT * FROM users WHERE username=? AND password=?', [username, password])
+    salt = query_db("SELECT salt FROM users WHERE username=?")
+    query = query_db('SELECT * FROM users WHERE username=? AND password=?',
+                     (username, hashlib.pbkdf2_hmac('sha256', password, salt, 100000)))
     if query is None:
         print('Your username or password were incorrect.')
     else:
