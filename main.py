@@ -5,7 +5,7 @@ import re
 import sqlite3
 import uuid
 
-from flask import Flask, jsonify, _app_ctx_stack, request
+from flask import Flask, jsonify, _app_ctx_stack, request, g
 
 DATABASE = 'db.db'
 
@@ -47,12 +47,6 @@ def checkmail(email):
     return True
 
 
-def checkunique(uid, username):
-    cursor = get_db().execute('SELECT * FROM users WHERE user_id=(%s) OR username=(%s)' % uid % username)
-    get_db().commit()
-    if cursor is None:
-        return True
-    return False
 
 
 @app.route('/')
@@ -60,9 +54,11 @@ def homepage():
     return '<h2 color="green">  ברוכים הבאים לאתר מתמטיקל </h2>'
 
 
-@app.route('/getuser')
+# @app.route('/getuser')
+
 @app.route('/register', methods=["POST"])
 def register():
+    try:
     registerdata = request.get_json(force=True)
     username = registerdata["username"]
     password = registerdata["password"]
@@ -72,20 +68,22 @@ def register():
     registration_date = datetime.datetime.utcnow().isoformat()
     last_login_date = registration_date
     password_hashed = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), salt, 100000)  # and salted
-    if checkmail(email) == True and checkunique(user_id, username) == True:
+    if checkmail(email) == True:
+
         cursor = get_db().execute('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
                                   [user_id, username, password_hashed, salt, email, registration_date, last_login_date])
-        get_db().commit()
+        g.db.commit()
+
         if cursor:
             result = {
-                "success": False,
-                "error_message": "registratiion failed!"
+                "success": True,
+                "error_message": None
             }
 
         else:
             result = {
-                "success": True,
-                "error_message": "registratiion successfull!!!!"
+                "success": False,
+                "error_message": "registration failed!"
             }
         cursor.close()
         return jsonify(result)
@@ -94,7 +92,13 @@ def register():
             "success": False,
             "error_message": "registratiion failed!"
         }
-        return jsonify(result)
+    except:
+        result = {
+            "success": False,
+            "error_message": "registratiion failed!"
+        }
+    return jsonify(result)
+
 
 
 @app.route('/login', methods=["POST", "GET"])
@@ -107,12 +111,18 @@ def login():
                      (username, hashlib.pbkdf2_hmac('sha256', password, salt, 100000)))
     if query is None:
         print('Your username or password were incorrect.')
+        result = {
+            "success": False,
+            "error_message": 'Your username or password were incorrect.'
+        }
+
     else:
         print('Successful login.')
-    result = {
+        result = {
         "success": True,
         "error_message": None
-    }
+        }
+
     return jsonify(result)
 
 if __name__ == '__main__':
