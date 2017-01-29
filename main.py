@@ -58,7 +58,7 @@ def homepage():
 
 @app.route('/register', methods=["POST"])
 def register():
-    try:
+ try:
     registerdata = request.get_json(force=True)
     username = registerdata["username"]
     password = registerdata["password"]
@@ -92,12 +92,12 @@ def register():
             "success": False,
             "error_message": "registratiion failed!"
         }
-    except:
+ except:
         result = {
             "success": False,
             "error_message": "registratiion failed!"
         }
-    return jsonify(result)
+ return jsonify(result)
 
 
 
@@ -122,7 +122,6 @@ def login():
         "success": True,
         "error_message": None
         }
-
     return jsonify(result)
 
 if __name__ == '__main__':
