@@ -48,7 +48,6 @@ def checkmail(email):
 
 
 
-
 @app.route('/')
 def homepage():
     return '<h2 color="green">  ברוכים הבאים לאתר מתמטיקל </h2>'
@@ -59,7 +58,7 @@ def homepage():
 @app.route('/register', methods=["POST", "GET"])
 def register():
  try:
-    registerdata = request.get_json(force=True)
+    registerdata = request.get_json()
     username = registerdata["username"]
     password = registerdata["password"]
     email = registerdata["email"]

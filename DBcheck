@@ -37,6 +37,6 @@ def query_db(query, args=(), one=False):
 
 @app.route('/DBcheck', methods=["GET"])
 def DBcheck():
-    for user in query_db('SELECT * FROM users'):
-        print(user['user_id'] + '|' + user['username'] + '|' + user['password'] + '|' + user['email'] + '|' + user[
-            'registration_date'] + '|' + user['last_login_date'] + '\n')
+    cursor = get_db().execute('SELECT * FROM users')
+    for value in cursor:
+        return '<h2>' +(value["username"])+'</h2>'
