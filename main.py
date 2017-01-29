@@ -56,9 +56,9 @@ def homepage():
 
 # @app.route('/getuser')
 
-@app.route('/register', methods=["POST"])
+@app.route('/register', methods=["POST", "GET"])
 def register():
-    try:
+ try:
     registerdata = request.get_json(force=True)
     username = registerdata["username"]
     password = registerdata["password"]
@@ -90,14 +90,14 @@ def register():
     else:
         result = {
             "success": False,
-            "error_message": "registratiion failed!"
+            "error_message": "registration failed!"
         }
-    except:
+ except:
         result = {
             "success": False,
-            "error_message": "registratiion failed!"
+            "error_message": "registration failed!"
         }
-    return jsonify(result)
+ return jsonify(result)
 
 
 
@@ -110,20 +110,20 @@ def login():
     query = query_db('SELECT * FROM users WHERE username=? AND password=?',
                      (username, hashlib.pbkdf2_hmac('sha256', password, salt, 100000)))
     if query is None:
-        print('Your username or password were incorrect.')
+        # print('Your username or password were incorrect.')
         result = {
             "success": False,
             "error_message": 'Your username or password were incorrect.'
         }
 
     else:
-        print('Successful login.')
+        # print('Successful login.')
         result = {
         "success": True,
         "error_message": None
         }
-
     return jsonify(result)
 
 if __name__ == '__main__':
+
     app.run(debug=True)
