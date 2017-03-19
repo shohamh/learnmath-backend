@@ -6,12 +6,13 @@ import sqlite3
 import uuid
 
 from flask import Flask, jsonify, _app_ctx_stack, request, g
-from flask_cors import CORS ,cross_origin
+from flask_cors import CORS, cross_origin
 
 DATABASE = 'db.db'
 
 app = Flask(__name__)
 CORS(app)
+
 
 def get_db():
     db = getattr(_app_ctx_stack.top, '_database', None)
@@ -48,15 +49,15 @@ def checkmail(email):
     return True
 
 
-#@app.route('/DBcheck')
-#@cross_origin()
-#def DBcheck():
- #res=''
- #c=get_db().cursor()
- #c.execute('SELECT username FROM users')
- #for user in c.fetchall():
-  #  res=res+' '+user+'\n'
- #return res
+# @app.route('/DBcheck')
+# @cross_origin()
+# def DBcheck():
+# res=''
+# c=get_db().cursor()
+# c.execute('SELECT username FROM users')
+# for user in c.fetchall():
+#  res=res+' '+user+'\n'
+# return res
 
 
 
@@ -64,7 +65,7 @@ def checkmail(email):
 @app.route('/')
 @cross_origin()
 def homepage():
-   return '<h2 color="green">  ברוכים הבאים לאתר מתמטיקל </h2>'
+    return '<h2 color="green">  ברוכים הבאים לאתר מתמטיקל </h2>'
 
 
 # @app.route('/getuser')
@@ -72,53 +73,52 @@ def homepage():
 @app.route('/register', methods=["POST", "GET"])
 @cross_origin()
 def register():
- try:
+    result = {
+        "success": False,
+        "error_messages": []
+    }
 
-    registerdata = request.get_json(force=True)
-    username = registerdata["username"]
-    password = registerdata["password"]
-    email = registerdata["email"]
-    salt = os.urandom(64)
-    user_id = str(uuid.uuid4())
-    registration_date = datetime.datetime.utcnow().isoformat()
-    last_login_date = registration_date
-    password_hashed = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), salt, 100000)  # and salted
-    if checkmail(email) == True:
+    try:
 
-        cursor = get_db().execute('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
-                                  [user_id, username, password_hashed, salt, email, registration_date, last_login_date])
-        g.db.commit()
+        registerdata = request.get_json(force=True)
+        username = registerdata["username"]
+        password = registerdata["password"]
+        email = registerdata["email"]
+        salt = os.urandom(64)
+        user_id = str(uuid.uuid4())
+        registration_date = datetime.datetime.utcnow().isoformat()
+        last_login_date = registration_date
+        password_hashed = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), salt, 100000)  # and salted
+        if checkmail(email) == True:
 
-        if cursor:
-            result = {
-                "success": True,
-                "error_message": None
-            }
+            cursor = get_db().execute('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
+                                      [user_id, username, password_hashed, salt, email, registration_date,
+                                       last_login_date])
+            g.db.commit()
+
+            if cursor:
+                result["success"] = True
+
+            else:
+                result["error_messages"].append("Failed to register, the username/email may be taken.")
+            cursor.close()
 
         else:
-            result = {
-                "success": False,
-                "error_message": "registration failed!"
-            }
-        cursor.close()
-        return jsonify(result)
-    else:
-        result = {
-            "success": False,
-            "error_message": "registration failed!"
-        }
- except:
-        result = {
-            "success": False,
-            "error_message": "registration failed!"
-        }
- return jsonify(result)
+            result["error_messages"].append("Email not valid.")
 
+    except:
+        # TODO: find out what exceptions come out of this try block
+        result["error_messages"].append("Registration Failed.")
+    return jsonify(result)
 
 
 @app.route('/login', methods=["POST", "GET"])
 @cross_origin()
 def login():
+    result = {
+        "success": False,
+        "error_messages": []
+    }
     logindata = request.get_json(force=True)
     username = logindata["username"]
     password = logindata["password"]
@@ -126,6 +126,7 @@ def login():
     query = query_db('SELECT * FROM users WHERE username=? AND password=?',
                      (username, hashlib.pbkdf2_hmac('sha256', password, salt, 100000)))
     if query is None:
+
         # print('Your username or password were incorrect.')
         result = {
             "success": False,
@@ -134,12 +135,15 @@ def login():
 
     else:
         # print('Successful login.')
+        session_key = uuid.uuid1()
+        result["session_key"] = session_key
+        #TODO: write session_key to database
         result = {
-        "success": True,
-        "error_message": None
+            "success": True,
+            "error_message": None
         }
     return jsonify(result)
 
-if __name__ == '__main__':
 
+if __name__ == '__main__':
     app.run(debug=True)
