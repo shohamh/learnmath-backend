@@ -6,11 +6,12 @@ import sqlite3
 import uuid
 
 from flask import Flask, jsonify, _app_ctx_stack, request, g
+from flask_cors import CORS ,cross_origin
 
 DATABASE = 'db.db'
 
 app = Flask(__name__)
-
+CORS(app)
 
 def get_db():
     db = getattr(_app_ctx_stack.top, '_database', None)
@@ -47,18 +48,33 @@ def checkmail(email):
     return True
 
 
+#@app.route('/DBcheck')
+#@cross_origin()
+#def DBcheck():
+ #res=''
+ #c=get_db().cursor()
+ #c.execute('SELECT username FROM users')
+ #for user in c.fetchall():
+  #  res=res+' '+user+'\n'
+ #return res
+
+
+
 
 @app.route('/')
+@cross_origin()
 def homepage():
-    return '<h2 color="green">  ברוכים הבאים לאתר מתמטיקל </h2>'
+   return '<h2 color="green">  ברוכים הבאים לאתר מתמטיקל </h2>'
 
 
 # @app.route('/getuser')
 
 @app.route('/register', methods=["POST", "GET"])
+@cross_origin()
 def register():
  try:
-    registerdata = request.get_json()
+
+    registerdata = request.get_json(force=True)
     username = registerdata["username"]
     password = registerdata["password"]
     email = registerdata["email"]
@@ -101,6 +117,7 @@ def register():
 
 
 @app.route('/login', methods=["POST", "GET"])
+@cross_origin()
 def login():
     logindata = request.get_json(force=True)
     username = logindata["username"]
