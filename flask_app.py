@@ -136,7 +136,7 @@ def login():
 
 
         else:
-            # print('Successful login.')
+
             session_key = uuid.uuid1()
             get_db().execute('INSERT into sessions values(?,?,?,?)',[username,session_key,datetime.datetime.utcnow().isoformat(),30])
             get_db().commit()
