@@ -138,6 +138,8 @@ def login():
         else:
 
             session_key = uuid.uuid1()
+            get_db().execute('DELETE from sessions where username=?',[username,])
+            get_db().commit()
             get_db().execute('INSERT into sessions values(?,?,?,?)',[username,session_key,datetime.datetime.utcnow().isoformat(),30])
             get_db().commit()
             result["session_key"] = session_key
