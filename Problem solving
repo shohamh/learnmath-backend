@@ -1,0 +1,12 @@
+import wolframalpha
+
+input1=input("Question:")
+
+app_id="LH259U-2X7QT3WQP4"
+
+client=wolframalpha.Client(app_id)
+res=client.query(input1)
+
+answer=next(res.results).text
+
+print(answer)
