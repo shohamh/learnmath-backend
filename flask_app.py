@@ -123,6 +123,7 @@ def register():
 @cross_origin()
 #Function that checks if the username and password are existed in the database
 #This function returns an object that shows wheter the user exist or not
+#
 def login():
     result = {
         "success": False,
