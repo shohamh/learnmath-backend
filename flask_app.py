@@ -40,12 +40,15 @@ def query_db(query, args=(), one=False):
     cur.close()
     return (rv[0] if rv else None) if one else rv
 
-
+#Function that checks the validity of an email
+#This function gets an email string as an input and returns a boolean value
 def checkmail(email):
     EMAIL_REGEX = re.compile(r"\w+[.|\w]\w+@\w+[.]\w+[.|\w+]\w+")
     if not EMAIL_REGEX.match(email):
         return False
     return True
+#Function that checks if an email is unique
+#This function gets an email string as an input,and returns a boolean value
 def is_unique_email(email):
  cur=query_db('SELECT salt FROM users WHERE email=?', (email,))
  if len(cur)>0:
@@ -69,13 +72,15 @@ def is_unique_email(email):
 @app.route('/')
 @cross_origin()
 def homepage():
-    return '<h2 color="green">  ברוכים הבאים לאתר אינטיליגציה מתמטית </h2>'
+    return '<html><body><h2 color="green">  ברוכים הבאים לאתר אינטיליגנציה מתמטית </h2></body></html>'
 
 
 # @app.route('/getuser')
 
 @app.route('/register', methods=["POST", "GET"])
 @cross_origin()
+#Function that add a new user to the system
+#This function returns an object that shows wheter the user succeeded in registration or not
 def register():
     result = {
         "success": False,
@@ -92,7 +97,7 @@ def register():
     user_id = str(uuid.uuid4())
     registration_date = datetime.datetime.utcnow().isoformat()
     last_login_date = registration_date
-    password_hashed = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), salt, 100000)  # and salted
+    password_hashed = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), salt, 100000)
     if checkmail(email) and is_unique_email(email):
 
         cursor = get_db().execute('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
@@ -116,6 +121,8 @@ def register():
 
 @app.route('/login', methods=["POST", "GET"])
 @cross_origin()
+#Function that checks if the username and password are existed in the database
+#This function returns an object that shows wheter the user exist or not
 def login():
     result = {
         "success": False,
