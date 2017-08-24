@@ -11,8 +11,9 @@ from flask_cors import CORS, cross_origin
 DATABASE = 'db.db'
 app = Flask(__name__)
 CORS(app)
-
-
+#---------------------------------------------------------------------
+#Function that prepers the DataBase in order to execute a query.
+#---------------------------------------------------------------------
 def get_db():
     db = getattr(_app_ctx_stack.top, '_database', None)
     if db is None:
@@ -21,34 +22,43 @@ def get_db():
     db.row_factory = sqlite3.Row
     return db
 
-
+#-----------------------------------------------
+#Function that closes a connection to DataBase.
+#-----------------------------------------------
 @app.teardown_appcontext
 def close_connection(exception):
     db = getattr(_app_ctx_stack.top, '_database', None)
     if db is not None:
         db.close()
 
-
+#---------------------------------------------------------------
+#Function that convert the result of a query into a dictionary.
+#---------------------------------------------------------------
 def make_dicts(cursor, row):
     return dict((cursor.description[idx][0], value)
                 for idx, value in enumerate(row))
 
-
+#-------------------------------------------------------------------------
+#Function that executes a query and returns the result(might be empty).
+#-------------------------------------------------------------------------
 def query_db(query, args=(), one=False):
     cur = get_db().execute(query, args)
     rv = cur.fetchall()
     cur.close()
     return (rv[0] if rv else None) if one else rv
-
-#Function that checks the validity of an email
-#This function gets an email string as an input and returns a boolean value
+#-----------------------------------------------------------------------------
+#Function that checks the validity of an email.
+#This function gets an email string as an input and returns a boolean value.
+#-----------------------------------------------------------------------------
 def checkmail(email):
     EMAIL_REGEX = re.compile(r"\w+[.|\w]\w+@\w+[.]\w+[.|\w+]\w+")
     if not EMAIL_REGEX.match(email):
         return False
     return True
-#Function that checks if an email is unique
-#This function gets an email string as an input,and returns a boolean value
+#-----------------------------------------------------------------------------
+#Function that checks if an email is unique.
+#This function gets an email string as an input,and returns a boolean value.
+#-----------------------------------------------------------------------------
 def is_unique_email(email):
  cur=query_db('SELECT salt FROM users WHERE email=?', (email,))
  if len(cur)>0:
@@ -79,8 +89,10 @@ def homepage():
 
 @app.route('/register', methods=["POST", "GET"])
 @cross_origin()
-#Function that add a new user to the system
-#This function returns an object that shows wheter the user succeeded in registration or not
+#-------------------------------------------------------------------------------------------------
+#Function that adds a new user to the system.
+#This function returns an object that shows wheter the user succeeded in registration or not.
+#-------------------------------------------------------------------------------------------------
 def register():
     result = {
         "success": False,
@@ -121,9 +133,10 @@ def register():
 
 @app.route('/login', methods=["POST", "GET"])
 @cross_origin()
-#Function that checks if the username and password are existed in the database
-#This function returns an object that shows wheter the user exist or not
-#
+#--------------------------------------------------------------------------------
+#Function that checks if the username and password are existed in the database.
+#This function returns an object that shows wheter the user exist or not.
+#--------------------------------------------------------------------------------
 def login():
     result = {
         "success": False,
