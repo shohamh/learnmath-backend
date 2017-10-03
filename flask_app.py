@@ -188,7 +188,7 @@ def question():
     result = {
         "success": True,
         "error_messages": [],
-        "problem": ""
+        "problem": "9x^2+8x+79-3x+11=0"
     }
     return jsonify(result)
 
