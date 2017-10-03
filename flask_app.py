@@ -87,7 +87,11 @@ def is_unique_email(email):
 # return res
 
 
-
+@app.route('/users',methods=["POST","GET"])
+@cross_origin()
+def users():
+ for user in query_db('SELECT * FROM users'):
+     print (user['username'] , 'has the id', user['user_id'])
 
 @app.route('/')
 @cross_origin()
