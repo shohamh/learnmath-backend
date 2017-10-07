@@ -85,6 +85,7 @@ def is_unique_email(email):
 # for user in c.fetchall():
 #  res=res+' '+user+'\n'
 # return res
+#
 
 
 @app.route('/users',methods=["POST","GET"])
