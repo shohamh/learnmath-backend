@@ -70,10 +70,10 @@ def checkmail(email):
 # -----------------------------------------------------------------------------
 def is_unique_email(email):
     cur = query_db('SELECT salt FROM users WHERE email=?', (email,))
-    if len(cur) > 0:
-        return False
-    else:
+    if cur is None:
         return True
+    else:
+        return False
 
 
 # @app.route('/DBcheck')
@@ -159,7 +159,7 @@ def login():
     username = logindata["username"]
     password = logindata["password"]
     salt_rows = query_db('SELECT salt FROM users WHERE username=?', (username,))
-    if salt_rows and len(salt_rows) > 0:
+    if salt_rows is not None:
         salt = salt_rows[0]['salt']  # try and catch sqlite3.IntegrityError: UNIQUE constraint failed: users.email
         query = query_db('SELECT * FROM users WHERE username=? AND password=?',
                          [username.encode("utf_8"),
