@@ -59,7 +59,7 @@ def query_db(query, args=(), one=False):
 # -----------------------------------------------------------------------------
 def checkmail(email):
     EMAIL_REGEX = re.compile(r"\w+[.|\w]\w+@\w+[.]\w+[.|\w+]\w+")
-    if not email or not EMAIL_REGEX.match(email):
+    if not EMAIL_REGEX.match(email):
         return False
     return True
 
@@ -70,7 +70,7 @@ def checkmail(email):
 # -----------------------------------------------------------------------------
 def is_unique_email(email):
     cur = query_db('SELECT salt FROM users WHERE email=?', (email,))
-    if not cur:
+    if cur is None:
         return True
     else:
         return False
@@ -88,12 +88,11 @@ def is_unique_email(email):
 #
 
 
-@app.route('/users', methods=["POST", "GET"])
+@app.route('/users',methods=["POST","GET"])
 @cross_origin()
 def users():
-    for user in query_db('SELECT * FROM users'):
-        print(user['username'], 'has the id', user['user_id'])
-
+ for user in query_db('SELECT * FROM users'):
+     print (user['username'] , 'has the id', user['user_id'])
 
 @app.route('/')
 @cross_origin()
@@ -118,33 +117,30 @@ def register():
     # try:
 
     registerdata = request.get_json(force=True)
-    username = registerdata["username"] if "username" in registerdata else None
-    password = registerdata["password"] if "password" in registerdata else None
-    email = registerdata["email"] if "email" in registerdata else None
-
+    username = registerdata["username"]
+    password = registerdata["password"]
+    email = registerdata["email"]
     salt = os.urandom(64)
     user_id = str(uuid.uuid4())
     registration_date = datetime.datetime.utcnow().isoformat()
     last_login_date = registration_date
     password_hashed = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), salt, 100000)
-    if not checkmail(email):
-        result["error_messages"].append("Email not valid.")
-        return jsonify(result)
-    if not is_unique_email(email):
-        result["error_messages"].append("Email already taken.")
-        return jsonify(result)
+    if checkmail(email) and is_unique_email(email):
 
-    cursor = get_db().execute('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
-                              [user_id, username, password_hashed, salt, email, registration_date,
-                               last_login_date])
+        cursor = get_db().execute('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
+                                  [user_id, username, password_hashed, salt, email, registration_date,
+                                   last_login_date])
 
-    get_db().commit()
+        get_db().commit()
 
-    if not cursor:
-        result["error_messages"].append("Failed to register, the username/email may be taken.")
-        cursor.close()
+        if cursor is None:
+            result["error_messages"].append("Failed to register, the username/email may be taken.")
+            cursor.close()
+        else:
+            result["success"] = True
+
     else:
-        result["success"] = True
+        result["error_messages"].append("Email not valid.")
 
     return jsonify(result)
 
@@ -161,33 +157,33 @@ def login():
         "error_messages": []
     }
     logindata = request.get_json(force=True)
-    username = logindata["username"] if "username" in logindata else None
-    password = logindata["password"] if "password" in logindata else None
-
+    username = logindata["username"]
+    password = logindata["password"]
     salt_rows = query_db('SELECT salt FROM users WHERE username=?', (username,))
-    if not salt_rows:
+    if salt_rows is not None:
+        salt = salt_rows[0]['salt']  # try and catch sqlite3.IntegrityError: UNIQUE constraint failed: users.email
+        query = query_db('SELECT * FROM users WHERE username=? AND password=?',
+                         [username.encode("utf_8"),
+                          hashlib.pbkdf2_hmac('sha256', password.encode("utf_8"), salt, 100000)])
+        if query is None:
+
+            result["error_messages"].append("Your username or password were incorrect.")
+
+
+
+        else:
+
+            session_key = uuid.uuid1()
+            get_db().execute('DELETE FROM sessions WHERE username=?', [username, ])
+            get_db().commit()
+            get_db().execute('INSERT INTO sessions VALUES(?,?,?,?)',
+                             [username, session_key, datetime.datetime.utcnow().isoformat(), 30])
+            get_db().commit()
+            result["session_key"] = session_key
+
+            result["success"] = True
+    else:
         result["error_messages"].append("Username does not exist.")
-        return jsonify(result)
-    user_salt = salt_rows[0]["salt"]  # try and catch sqlite3.IntegrityError: UNIQUE constraint failed: users.email
-
-    a = username.encode("utf-8")
-    b = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), user_salt, 100000)
-    query = query_db('SELECT * FROM users WHERE username=? AND password=?',
-                     [a,
-                      b])
-    if not query:
-        result["error_messages"].append("Your username or password were incorrect.")
-        return jsonify(result)
-
-    session_key = uuid.uuid1()
-    get_db().execute('DELETE FROM sessions WHERE username=?', [username, ])
-    get_db().commit()
-    get_db().execute('INSERT INTO sessions VALUES(?,?,?,?)',
-                     [username, session_key, datetime.datetime.utcnow().isoformat(), 30])
-    get_db().commit()
-    result["session_key"] = session_key
-
-    result["success"] = True
 
     return jsonify(result)
 
