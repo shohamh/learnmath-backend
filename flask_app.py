@@ -170,10 +170,10 @@ def login():
         return jsonify(result)
     user_salt = salt_rows[0]["salt"]  # try and catch sqlite3.IntegrityError: UNIQUE constraint failed: users.email
 
-    a = username.encode("utf-8")
+    #a = username.encode("utf-8")
     b = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), user_salt, 100000)
     query = query_db('SELECT * FROM users WHERE username=? AND password=?',
-                     [a,
+                     [username,
                       b])
     if not query:
         result["error_messages"].append("Your username or password were incorrect.")
@@ -181,7 +181,7 @@ def login():
 
     session_key = uuid.uuid1()
     cur = query_db('SELECT last_login FROM sessions WHERE username=?', (username,))
-    if cur is not None:
+    if cur :
         get_db().execute('DELETE FROM sessions WHERE username=?', [username, ])
         get_db().commit()
 
