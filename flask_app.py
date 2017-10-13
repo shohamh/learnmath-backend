@@ -158,6 +158,7 @@ def register():
 def login():
     result = {
         "success": False,
+        "session_key":"",
         "error_messages": []
     }
     logindata = request.get_json(force=True)
@@ -185,9 +186,15 @@ def login():
         get_db().execute('DELETE FROM sessions WHERE username=?', [username, ])
         get_db().commit()
 
-    get_db().execute('INSERT INTO sessions VALUES(?,?,?,?)',
-                     [username, session_key, datetime.datetime.utcnow().isoformat(), 30])
+    cursor = get_db().execute('INSERT INTO sessions VALUES(?,?,?,?)',
+                   [username, session_key, datetime.datetime.utcnow().isoformat(),30])
     get_db().commit()
+    if not cursor:
+        result["error_messages"].append("Failed to login.Problem with the session key")
+        cursor.close()
+        result["success"] = False
+        return jsonify(result)
+
     result["session_key"] = session_key
 
     result["success"] = True
