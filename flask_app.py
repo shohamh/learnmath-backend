@@ -115,7 +115,7 @@ def register():
         "error_messages": []
     }
 
-    # try:
+
 
     registerdata = request.get_json(force=True)
     username = registerdata["username"] if "username" in registerdata else None
@@ -130,15 +130,13 @@ def register():
     if not checkmail(email):
         result["error_messages"].append("Email not valid.")
         return jsonify(result)
-   # if not is_unique_email(email):
-    #    result["error_messages"].append("Email already taken.")
-     #   return jsonify(result)
+
 
 
     try:
       query_db('INSERT INTO users VALUES(?,?,?,?,?,?,?)',(user_id,username,password_hashed,salt,email,registration_date,last_login_date))
     except sqlite3.Error as e:
-      result["error_messages"] = e.args[0]
+      result["error_messages"].append(e.args[0])
       return jsonify(result)
 
     result["success"] = True
@@ -183,14 +181,13 @@ def login():
         get_db().execute('DELETE FROM sessions WHERE username=?', [username, ])
         get_db().commit()
 
-    #cursor = get_db().execute('INSERT INTO sessions VALUES(?,?,?,?)',
-    #               [username, session_key, datetime.datetime.utcnow().isoformat(),30])
-    #get_db().commit()
-    #if not cursor:
-     #   result["error_messages"].append("Failed to login.Problem with the session key")
-      #  cursor.close()
-       # result["success"] = False
-        #return jsonify(result)
+    try:
+      query_db('INSERT INTO sessions VALUES(?,?,?,?)',
+               (username, session_key, datetime.datetime.utcnow().isoformat(),30))
+    except sqlite3.Error as e:
+        result["error_messages"].append(e.args[0])
+        result["success"] = False
+        return jsonify(result)
 
     result["session_key"] = session_key
 
