@@ -141,7 +141,15 @@ def register():
         insert_db('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
                  (user_id, username, password_hashed, salt, email, registration_date, last_login_date))
     except sqlite3.Error as e:
-        result["error_messages"].append(e.args[0])
+        if e.args[0] == "UNIQUE constraint failed: users.email":
+            result["error_messages"].append("Sorry but this email address already exists")
+
+        if e.args[0] == "UNIQUE constraint failed: users.username":
+            result["error_messages"].append("Sorry but this username already exists")
+
+        else:
+         result["error_messages"].append(e.args[0])
+
         return jsonify(result)
 
     result["success"] = True
@@ -190,7 +198,6 @@ def login():
                  (username, session_key, datetime.datetime.utcnow().isoformat(), 30))
     except sqlite3.Error as e:
         result["error_messages"].append(e.args[0])
-        result["success"] = False
         return jsonify(result)
 
     result["session_key"] = session_key
