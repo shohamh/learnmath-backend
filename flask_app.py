@@ -134,6 +134,11 @@ def register():
         result["error_messages"].append("Email already taken.")
         return jsonify(result)
 
+    checkUsername = get_db().execute('SELECT * FROM users WHERE username=?',(username,))
+    if checkUsername:
+        result["error_messages"].append("Username is already taken.")
+        return jsonify(result)
+
     cursor = get_db().execute('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
                               [user_id, username, password_hashed, salt, email, registration_date,
                                last_login_date])
@@ -186,14 +191,14 @@ def login():
         get_db().execute('DELETE FROM sessions WHERE username=?', [username, ])
         get_db().commit()
 
-    cursor = get_db().execute('INSERT INTO sessions VALUES(?,?,?,?)',
-                   [username, session_key, datetime.datetime.utcnow().isoformat(),30])
-    get_db().commit()
-    if not cursor:
-        result["error_messages"].append("Failed to login.Problem with the session key")
-        cursor.close()
-        result["success"] = False
-        return jsonify(result)
+    #cursor = get_db().execute('INSERT INTO sessions VALUES(?,?,?,?)',
+    #               [username, session_key, datetime.datetime.utcnow().isoformat(),30])
+    #get_db().commit()
+    #if not cursor:
+     #   result["error_messages"].append("Failed to login.Problem with the session key")
+      #  cursor.close()
+       # result["success"] = False
+        #return jsonify(result)
 
     result["session_key"] = session_key
 
