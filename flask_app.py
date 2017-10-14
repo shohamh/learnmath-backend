@@ -69,7 +69,7 @@ def checkmail(email):
 # This function gets an email string as an input,and returns a boolean value.
 # -----------------------------------------------------------------------------
 def is_unique_email(email):
-    cur = query_db('SELECT salt FROM users WHERE email=?', (email,))
+    cur = query_db('SELECT username FROM users WHERE email=?', (email,))
     if not cur:
         return True
     else:
@@ -134,20 +134,20 @@ def register():
         result["error_messages"].append("Email already taken.")
         return jsonify(result)
 
-    checkUsername = get_db().execute('SELECT * FROM users WHERE username=?',(username,))
-    if checkUsername:
-        result["error_messages"].append("Username is already taken.")
-        return jsonify(result)
+   # checkUsername = get_db().execute('SELECT * FROM users WHERE username=?',(username,))
+    #if checkUsername:
+     #   result["error_messages"].append("Username is already taken.")
+      #  return jsonify(result)
 
-    cursor = get_db().execute('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
-                              [user_id, username, password_hashed, salt, email, registration_date,
-                               last_login_date])
+    #cursor = get_db().execute('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
+    #                          [user_id, username, password_hashed, salt, email, registration_date,
+    #                           last_login_date])
 
-    get_db().commit()
-
+    #get_db().commit()
+    cursor = query_db('INSERT INTO users VALUES(?,?,?,?,?,?,?)',(user_id,username,password_hashed,salt,email,registration_date,last_login_date))
     if not cursor:
         result["error_messages"].append("Failed to register, the username/email may be taken.")
-        cursor.close()
+#        cursor.close()
     else:
         result["success"] = True
 
