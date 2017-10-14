@@ -52,6 +52,14 @@ def query_db(query, args=(), one=False):
     cur.close()
     return (rv[0] if rv else None) if one else rv
 
+def insert_db(query, args=()):
+    db = get_db()
+    db.execute(query, args)
+    db.commit()
+    db.close()
+
+
+
 
 # -----------------------------------------------------------------------------
 # Function that checks the validity of an email.
@@ -115,8 +123,6 @@ def register():
         "error_messages": []
     }
 
-
-
     registerdata = request.get_json(force=True)
     username = registerdata["username"] if "username" in registerdata else None
     password = registerdata["password"] if "password" in registerdata else None
@@ -131,16 +137,12 @@ def register():
         result["error_messages"].append("Email not valid.")
         return jsonify(result)
 
-
-    c = query_db('SELECT * FROM users WHERE  username=?',(username,))
-    if c:
-        result["error_messages"].append("Username is already taken")
-        return jsonify(result)
     try:
-      query_db('INSERT INTO users VALUES(?,?,?,?,?,?,?)',(user_id,username,password_hashed,salt,email,registration_date,last_login_date))
+        insert_db('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
+                 (user_id, username, password_hashed, salt, email, registration_date, last_login_date))
     except sqlite3.Error as e:
-      result["error_messages"].append(e.args[0])
-      return jsonify(result)
+        result["error_messages"].append(e.args[0])
+        return jsonify(result)
 
     result["success"] = True
 
@@ -156,7 +158,7 @@ def register():
 def login():
     result = {
         "success": False,
-        "session_key":"",
+        "session_key": "",
         "error_messages": []
     }
     logindata = request.get_json(force=True)
@@ -169,7 +171,6 @@ def login():
         return jsonify(result)
     user_salt = salt_rows[0]["salt"]  # try and catch sqlite3.IntegrityError: UNIQUE constraint failed: users.email
 
-
     b = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), user_salt, 100000)
     query = query_db('SELECT * FROM users WHERE username=? AND password=?',
                      [username,
@@ -180,13 +181,13 @@ def login():
 
     session_key = uuid.uuid1()
     cur = query_db('SELECT last_login FROM sessions WHERE username=?', (username,))
-    if cur :
+    if cur:
         get_db().execute('DELETE FROM sessions WHERE username=?', [username, ])
         get_db().commit()
 
     try:
-      query_db('INSERT INTO sessions VALUES(?,?,?,?)',
-               (username, session_key, datetime.datetime.utcnow().isoformat(),30))
+        query_db('INSERT INTO sessions VALUES(?,?,?,?)',
+                 (username, session_key, datetime.datetime.utcnow().isoformat(), 30))
     except sqlite3.Error as e:
         result["error_messages"].append(e.args[0])
         result["success"] = False
@@ -207,6 +208,8 @@ def question():
         "problem": "9x^2+8x+79-3x+11=0"
     }
     return jsonify(result)
+
+
 #
 
 if __name__ == '__main__':
