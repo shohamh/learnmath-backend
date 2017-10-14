@@ -132,7 +132,10 @@ def register():
         return jsonify(result)
 
 
-
+    c = query_db('SELECT * FROM users WHERE  username=?',(username,))
+    if c:
+        result["error_messages"].append("Username is already taken")
+        return jsonify(result)
     try:
       query_db('INSERT INTO users VALUES(?,?,?,?,?,?,?)',(user_id,username,password_hashed,salt,email,registration_date,last_login_date))
     except sqlite3.Error as e:
