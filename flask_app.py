@@ -60,7 +60,6 @@ def execute_query_db(query, args=()):
     db = get_db()
     db.execute(query, args)
     db.commit()
-    db.close()
 
 
 # -----------------------------------------------------------------------------
@@ -182,20 +181,19 @@ def login():
     user_salt = salt_rows[0]["salt"]  # try and catch sqlite3.IntegrityError: UNIQUE constraint failed: users.email
 
     hashed_salted_password = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), user_salt, 100000)
-    query = query_db('SELECT * FROM users WHERE username=? AND password=?', [username, hashed_salted_password])
+    query = query_db('SELECT * FROM users WHERE username=? AND password=?', [username, hashed_salted_password], one=True)
     if not query:
-        result["error_messages"].append("Your username or password were incorrect.")
+        result["error_messages"].append("Your username/password were incorrect.")
         return jsonify(result)
 
-    session_key = uuid.uuid1()
-    cur = query_db('SELECT last_login FROM sessions WHERE username=?', (username,))
+    user_id = query["user_id"]
+    session_key = str(uuid.uuid1())
+    cur = query_db('SELECT last_login FROM sessions WHERE user_id=?', (user_id,))
     if cur:
-        get_db().execute('DELETE FROM sessions WHERE username=?', [username, ])
-        get_db().commit()
+        execute_query_db("DELETE FROM sessions WHERE user_id=?", [user_id, ])
 
     try:
-        execute_query_db('INSERT INTO sessions VALUES(?,?,?,?)',
-                         (username, session_key, datetime.datetime.utcnow().isoformat(), 30))
+        execute_query_db('INSERT INTO sessions VALUES(?,?,?,?)', (user_id, session_key, datetime.datetime.utcnow().isoformat(), 30))
     except sqlite3.Error as e:
         result["error_messages"].append(e.args[0])
         return jsonify(result)
