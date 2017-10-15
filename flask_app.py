@@ -52,13 +52,15 @@ def query_db(query, args=(), one=False):
     cur.close()
     return (rv[0] if rv else None) if one else rv
 
-def insert_db(query, args=()):
+
+# -------------------------------------------------------------------------
+# Function that executes a query that changes the db and commits (doesn't return anything, TODO: maybe it should?).
+# -------------------------------------------------------------------------
+def execute_query_db(query, args=()):
     db = get_db()
     db.execute(query, args)
     db.commit()
     db.close()
-
-
 
 
 # -----------------------------------------------------------------------------
@@ -138,17 +140,17 @@ def register():
         return jsonify(result)
 
     try:
-        insert_db('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
-                 (user_id, username, password_hashed, salt, email, registration_date, last_login_date))
+        execute_query_db('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
+                         (user_id, username, password_hashed, salt, email, registration_date, last_login_date))
     except sqlite3.Error as e:
         if e.args[0] == "UNIQUE constraint failed: users.email":
-            result["error_messages"].append("Sorry but this email address already exists")
+            result["error_messages"].append("Email already taken.")
 
-        if e.args[0] == "UNIQUE constraint failed: users.username":
-            result["error_messages"].append("Sorry but this username already exists")
+        elif e.args[0] == "UNIQUE constraint failed: users.username":
+            result["error_messages"].append("Username already taken.")
 
         else:
-         result["error_messages"].append(e.args[0])
+            result["error_messages"].append(e.args[0])
 
         return jsonify(result)
 
@@ -179,10 +181,8 @@ def login():
         return jsonify(result)
     user_salt = salt_rows[0]["salt"]  # try and catch sqlite3.IntegrityError: UNIQUE constraint failed: users.email
 
-    b = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), user_salt, 100000)
-    query = query_db('SELECT * FROM users WHERE username=? AND password=?',
-                     [username,
-                      b])
+    hashed_salted_password = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), user_salt, 100000)
+    query = query_db('SELECT * FROM users WHERE username=? AND password=?', [username, hashed_salted_password])
     if not query:
         result["error_messages"].append("Your username or password were incorrect.")
         return jsonify(result)
@@ -194,8 +194,8 @@ def login():
         get_db().commit()
 
     try:
-        query_db('INSERT INTO sessions VALUES(?,?,?,?)',
-                 (username, session_key, datetime.datetime.utcnow().isoformat(), 30))
+        execute_query_db('INSERT INTO sessions VALUES(?,?,?,?)',
+                         (username, session_key, datetime.datetime.utcnow().isoformat(), 30))
     except sqlite3.Error as e:
         result["error_messages"].append(e.args[0])
         return jsonify(result)
