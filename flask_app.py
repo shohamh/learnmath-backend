@@ -204,6 +204,37 @@ def login():
 
     return jsonify(result)
 
+@app.route('/student_solution',methods=["GET","POST"])
+def student_solution():
+    result = {
+        "success": False,
+        "error_messages": []
+    }
+
+    student_solution = request.get_json(force=True)
+    user_id = student_solution["user_id"] if "user_id" in student_solution else None
+    question_id = student_solution["question_id"] if "question_id" in student_solution else None
+    answer = student_solution["answer"] if "answer" in student_solution else None
+    correct_answer = student_solution["correct_answer"] if "correct_answer" in student_solution else None
+    solution_time = student_solution["solution_time"] if "solution_time" in student_solution else None
+    date_time = datetime.datetime.utcnow().isoformat()
+
+    try:
+        execute_query_db('INSERT INTO student_solutions VALUES(?,?,?,?,?,?)',
+                         (user_id, question_id, solution_time, answer, correct_answer, date_time))
+    except sqlite3.Error as e:
+        if e.args[0] == "UNIQUE constraint failed: student_solutions.user_id, student_solutions.question_id":
+            result["error_messages"].append("The user already had this question.")
+
+        else:
+            result["error_messages"].append(e.args[0])
+
+        return jsonify(result)
+
+    result["success"] = True
+
+    return  jsonify(result)
+
 
 @app.route('/question', methods=["POST", "GET"])
 def question():
