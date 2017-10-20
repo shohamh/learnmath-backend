@@ -136,10 +136,9 @@ def all_student_solutions():
 @app.route('/')
 @cross_origin()
 def homepage():
-    return '<html><body><h2 color="green">  ברוכים הבאים לאתר אינטיליגנציה מתמטית </h2></body></html>'
+    return '<html><body><h2 color="green">LearnMath backend server</h2></body></html>'
 
 
-# @app.route('/getuser')
 
 @app.route('/register', methods=["POST", "GET"])
 @cross_origin()
