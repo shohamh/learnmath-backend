@@ -124,23 +124,22 @@ def register():
         "error_messages": []
     }
 
-    registerdata = request.get_json(force=True)
-    username = registerdata["username"] if "username" in registerdata else None
-    password = registerdata["password"] if "password" in registerdata else None
-    email = registerdata["email"] if "email" in registerdata else None
+    data = request.get_json(force=True)
+    username, password, email = data.get("username"), data.get("password"), data.get("email")
 
     salt = os.urandom(64)
     user_id = str(uuid.uuid4())
     registration_date = datetime.datetime.utcnow().isoformat()
     last_login_date = registration_date
-    password_hashed = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), salt, 100000)
+    salted_hashed_password = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), salt, 100000)
+
     if not checkmail(email):
         result["error_messages"].append("Email not valid.")
         return jsonify(result)
 
     try:
         execute_query_db('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
-                         (user_id, username, password_hashed, salt, email, registration_date, last_login_date))
+                         (user_id, username, salted_hashed_password, salt, email, registration_date, last_login_date))
     except sqlite3.Error as e:
         if e.args[0] == "UNIQUE constraint failed: users.email":
             result["error_messages"].append("Email already taken.")
@@ -170,37 +169,35 @@ def login():
         "session_key": "",
         "error_messages": []
     }
-    logindata = request.get_json(force=True)
-    username = logindata["username"] if "username" in logindata else None
-    password = logindata["password"] if "password" in logindata else None
+    data = request.get_json(force=True)
+    username, password = data.get("username"), data.get("password")
 
     salt_rows = query_db('SELECT salt FROM users WHERE username=?', (username,))
     if not salt_rows:
         result["error_messages"].append("Username does not exist.")
         return jsonify(result)
-    user_salt = salt_rows[0]["salt"]  # try and catch sqlite3.IntegrityError: UNIQUE constraint failed: users.email
+    user_salt = salt_rows[0]["salt"]
+    salted_hashed_password = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), user_salt, 100000)
 
-    hashed_salted_password = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), user_salt, 100000)
-    query = query_db('SELECT * FROM users WHERE username=? AND password=?', [username, hashed_salted_password],
-                     one=True)
-    if not query:
+    row = query_db('SELECT * FROM users WHERE username=? AND password=?', [username, salted_hashed_password], one=True)
+    if not row:
         result["error_messages"].append("Your username/password were incorrect.")
         return jsonify(result)
 
-    user_id = query["user_id"]
-    session_key = str(uuid.uuid1())
-    cur = query_db('SELECT last_login FROM sessions WHERE user_id=?', (user_id,))
-    if cur:
-        execute_query_db("DELETE FROM sessions WHERE user_id=?", [user_id, ])
+    user_id = row["user_id"]
+    # removing last session token
+    execute_query_db("DELETE FROM sessions WHERE user_id=?", [user_id, ])
+
+    new_session_key = str(uuid.uuid1())
 
     try:
         execute_query_db('INSERT INTO sessions VALUES(?,?,?,?)',
-                         (user_id, session_key, datetime.datetime.utcnow().isoformat(), 30))
+                         (user_id, new_session_key, datetime.datetime.utcnow().isoformat(), 30))
     except sqlite3.Error as e:
         result["error_messages"].append(e.args[0])
         return jsonify(result)
 
-    result["session_key"] = session_key
+    result["session_key"] = new_session_key
 
     result["success"] = True
 
@@ -208,24 +205,24 @@ def login():
 
 
 @app.route('/student_solution', methods=["GET", "POST"])
+@cross_origin()
 def student_solution():
     result = {
         "success": False,
         "error_messages": []
     }
 
-    student_solution = request.get_json(force=True)
-    user_id = student_solution["user_id"] if "user_id" in student_solution else None
-    question_id = student_solution["question_id"] if "question_id" in student_solution else None
-    answer = student_solution["answer"] if "answer" in student_solution else None
-    correct_answer = student_solution["correct_answer"] if "correct_answer" in student_solution else None
-    solution_time = student_solution["solution_time"] if "solution_time" in student_solution else None
+    data = request.get_json(force=True)
+    user_id, question_id, answer, correct_answer, solution_time = data.get("user_id"), data.get("question_id"), \
+                                                                  data.get("answer"), data.get("correct_answer"), \
+                                                                  data.get("solution_time")
     date_time = datetime.datetime.utcnow().isoformat()
 
     try:
         execute_query_db('INSERT INTO student_solutions VALUES(?,?,?,?,?,?)',
                          (user_id, question_id, solution_time, answer, correct_answer, date_time))
     except sqlite3.Error as e:
+        # TO DO: probably not good with new primary key tuple
         if e.args[0] == "UNIQUE constraint failed: student_solutions.user_id, student_solutions.question_id":
             result["error_messages"].append("The user already had this question.")
 
@@ -240,6 +237,7 @@ def student_solution():
 
 
 @app.route('/question', methods=["POST", "GET"])
+@cross_origin()
 def question():
     result = {
         "success": True,
