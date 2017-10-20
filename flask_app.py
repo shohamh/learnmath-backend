@@ -66,9 +66,9 @@ def execute_query_db(query, args=()):
 # Function that checks the validity of an email.
 # This function gets an email string as an input and returns a boolean value.
 # -----------------------------------------------------------------------------
-def checkmail(email):
-    EMAIL_REGEX = re.compile(r"\w+[.|\w]\w+@\w+[.]\w+[.|\w+]\w+")
-    if not email or not EMAIL_REGEX.match(email):
+def is_email_valid(email):
+    email_regex = re.compile(r"\w+[.|\w]\w+@\w+[.]\w+[.|\w+]\w+")
+    if not email or not email_regex.match(email):
         return False
     return True
 
@@ -85,23 +85,52 @@ def is_unique_email(email):
         return False
 
 
-# @app.route('/DBcheck')
-# @cross_origin()
-# def DBcheck():
-# res=''
-# c=get_db().cursor()
-# c.execute('SELECT username FROM users')
-# for user in c.fetchall():
-#  res=res+' '+user+'\n'
-# return res
-#
-
-
-@app.route('/users', methods=["POST", "GET"])
+@app.route('/all_users', methods=["POST", "GET"])
 @cross_origin()
-def users():
-    for user in query_db('SELECT * FROM users'):
-        print(user['username'], 'has the id', user['user_id'])
+def all_users():
+    result = "<html><body><table border=\"1\">"
+    result += "<tr><th>user_id</th><th>username</th><th>password</th><th>salt</th><th>email</th><th>registration_date</th><th>last_login_date</th></tr>"
+    user_rows = query_db('SELECT * FROM users')
+    for user in user_rows:
+        result += "<tr>"
+        result += "<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>".format(
+            user["user_id"], user["username"], user["password"], user["salt"], user["email"], user["registration_date"],
+            user["last_login_date"])
+        result += "</tr>"
+    result += "</table></body></html>"
+    return result
+
+
+@app.route('/all_sessions', methods=["POST", "GET"])
+@cross_origin()
+def all_sessions():
+    result = "<html><body><table border=\"1\">"
+    result += "<tr><th>user_id</th><th>session_key</th><th>last_login</th><th>max_session_length</th></tr>"
+    session_rows = query_db('SELECT * FROM sessions')
+    for session in session_rows:
+        result += "<tr>"
+        result += "<td>{}</td><td>{}</td><td>{}</td><td>{}</td>".format(session["user_id"], session["session_key"],
+                                                                        session["last_login"],
+                                                                        session["max_session_length"])
+        result += "</tr>"
+    result += "</table></body></html>"
+    return result
+
+
+@app.route('/all_student_solutions', methods=["POST", "GET"])
+@cross_origin()
+def all_student_solutions():
+    result = "<html><body><table border=\"1\">"
+    result += "<tr><th>user_id</th><th>question_id</th><th>solution_time</th><th>answer</th><th>correct_answer</th><th>datetime</th></tr>"
+    student_solutions_rows = query_db('SELECT * FROM student_solutions')
+    for student_solution in student_solutions_rows:
+        result += "<tr>"
+        result += "<td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td>".format(
+            student_solution["user_id"], student_solution["question_id"], student_solution["solution_time"],
+            student_solution["answer"], student_solution["correct_answer"], student_solution["datetime"])
+        result += "</tr>"
+    result += "</table></body></html>"
+    return result
 
 
 @app.route('/')
@@ -133,7 +162,7 @@ def register():
     last_login_date = registration_date
     salted_hashed_password = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), salt, 100000)
 
-    if not checkmail(email):
+    if not is_email_valid(email):
         result["error_messages"].append("Email not valid.")
         return jsonify(result)
 
