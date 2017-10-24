@@ -1,0 +1,3 @@
+[submodule "algebra-problem-generator"]
+	path = algebra-problem-generator
+	url = https://github.com/shohamh/algebra-problem-generator
