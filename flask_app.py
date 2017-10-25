@@ -5,9 +5,12 @@ import re
 import sqlite3
 import ssl
 import uuid
+import subprocess
 
 from flask import Flask, jsonify, _app_ctx_stack, request
 from flask_cors import CORS, cross_origin
+
+apb_exec = "algebra-problem-generator/bin/Debug/netcoreapp2.0/publish/algebra-problem-generator.dll"
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
 context.load_cert_chain(certfile="certs/cert.pem", keyfile="certs/key.pem")
@@ -199,7 +202,7 @@ def register():
 def login():
     result = {
         "success": False,
-        "session_key": "",
+        "user": None,
         "error_messages": []
     }
     data = request.get_json(force=True)
@@ -230,8 +233,12 @@ def login():
         result["error_messages"].append(e.args[0])
         return jsonify(result)
 
-    result["session_key"] = new_session_key
-
+    result["user"] = {
+        "username": row["username"],
+        "role": row["role"],
+        "email": row["email"],
+        "token": new_session_key
+    }
     result["success"] = True
 
     return jsonify(result)
@@ -273,6 +280,10 @@ def student_solution():
 @cross_origin()
 def question():
     data = request.get_json(force=True)
+
+    # running f# executable
+    out = subprocess.check_output(["dotnet", apb_exec])
+    print(out)
     problem = "9x^2+8x+79-3x+11=0"  # data.get("mathml")
     result = {
         "success": True,
@@ -282,7 +293,44 @@ def question():
     return jsonify(result)
 
 
-#
+@app.route('/add_question', methods=["POST", "GET"])
+@cross_origin()
+def add_question():
+    result = {
+        "success": True,
+        "error_messages": []
+    }
+    data = request.get_json(force=True)
+    question = data.get("question")
+    question_mathml = question.get("mathml") if question is not None else None
+    user = data.get("user")
+    if not user:
+        result["error_messages"].append("No user given, cannot validate creator is a teacher.")
+        return jsonify(result)
+
+    row = query_db('SELECT * FROM users WHERE username=?', [user.get("username")], one=True)
+    if not row:
+        result["error_messages"].append("No such user in database.")
+        return jsonify(result)
+    if row["role"] != "Teacher":
+        result["error_messages"].append("Permission error, user is not a teacher.")
+        return jsonify(result)
+    user_id = row["user_id"]
+
+    template_id = str(uuid.uuid4())
+    date_time = datetime.datetime.utcnow().isoformat()
+
+    try:
+        execute_query_db('INSERT INTO question_templates VALUES(?,?,?,?)',
+                         (template_id, question_mathml, user_id, date_time))
+    except sqlite3.Error as e:
+        result["error_messages"].append(e.args[0])
+        return jsonify(result)
+
+    result["success"] = True
+
+    return jsonify(result)
+
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080, debug=True, ssl_context=context)
