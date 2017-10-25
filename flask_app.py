@@ -4,9 +4,14 @@ import os
 import re
 import sqlite3
 import uuid
+import ssl
 
 from flask import Flask, jsonify, _app_ctx_stack, request
 from flask_cors import CORS, cross_origin
+
+
+context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
+context.load_cert_chain(certfile="certs/cert.pem", keyfile="certs/key.pem")
 
 DATABASE = 'db.db'
 app = Flask(__name__)
@@ -267,10 +272,12 @@ def student_solution():
 @app.route('/question', methods=["POST", "GET"])
 @cross_origin()
 def question():
+    data = request.get_json(force=True)
     result = {
         "success": True,
         "error_messages": [],
-        "problem": "9x^2+8x+79-3x+11=0"
+        #"problem": "9x^2+8x+79-3x+11=0"
+        "problem": data.get("mathml")
     }
     return jsonify(result)
 
@@ -278,4 +285,4 @@ def question():
 #
 
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=8080, debug=True)
+    app.run(host="0.0.0.0", port=8080, debug=True, ssl_context=context)
