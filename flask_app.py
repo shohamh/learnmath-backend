@@ -3,12 +3,11 @@ import hashlib
 import os
 import re
 import sqlite3
-import uuid
 import ssl
+import uuid
 
 from flask import Flask, jsonify, _app_ctx_stack, request
 from flask_cors import CORS, cross_origin
-
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
 context.load_cert_chain(certfile="certs/cert.pem", keyfile="certs/key.pem")
@@ -144,7 +143,6 @@ def homepage():
     return '<html><body><h2 color="green">LearnMath backend server</h2></body></html>'
 
 
-
 @app.route('/register', methods=["POST", "GET"])
 @cross_origin()
 # -------------------------------------------------------------------------------------------------
@@ -158,21 +156,23 @@ def register():
     }
 
     data = request.get_json(force=True)
-    username, password, email = data.get("username"), data.get("password"), data.get("email")
-
+    username, password, email, role = data.get("username"), data.get("password"), data.get("email"), data.get("role")
+    if role not in ["Student", "Teacher"]:
+        role = "Student"
     salt = os.urandom(64)
     user_id = str(uuid.uuid4())
     registration_date = datetime.datetime.utcnow().isoformat()
     last_login_date = registration_date
-    salted_hashed_password = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), salt, 100000)
+    hashed_salted_password = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), salt, 100000)
 
     if not is_email_valid(email):
         result["error_messages"].append("Email not valid.")
         return jsonify(result)
 
     try:
-        execute_query_db('INSERT INTO users VALUES(?,?,?,?,?,?,?)',
-                         (user_id, username, salted_hashed_password, salt, email, registration_date, last_login_date))
+        execute_query_db('INSERT INTO users VALUES(?,?,?,?,?,?,?,?)',
+                         (user_id, username, email, hashed_salted_password, salt, role, registration_date,
+                          last_login_date))
     except sqlite3.Error as e:
         if e.args[0] == "UNIQUE constraint failed: users.email":
             result["error_messages"].append("Email already taken.")
@@ -210,9 +210,9 @@ def login():
         result["error_messages"].append("Username does not exist.")
         return jsonify(result)
     user_salt = salt_rows[0]["salt"]
-    salted_hashed_password = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), user_salt, 100000)
+    hashed_salted_password = hashlib.pbkdf2_hmac('sha256', password.encode("utf-8"), user_salt, 100000)
 
-    row = query_db('SELECT * FROM users WHERE username=? AND password=?', [username, salted_hashed_password], one=True)
+    row = query_db('SELECT * FROM users WHERE username=? AND password=?', [username, hashed_salted_password], one=True)
     if not row:
         result["error_messages"].append("Your username/password were incorrect.")
         return jsonify(result)
@@ -273,11 +273,11 @@ def student_solution():
 @cross_origin()
 def question():
     data = request.get_json(force=True)
+    problem = "9x^2+8x+79-3x+11=0"  # data.get("mathml")
     result = {
         "success": True,
         "error_messages": [],
-        #"problem": "9x^2+8x+79-3x+11=0"
-        "problem": data.get("mathml")
+        "problem": problem
     }
     return jsonify(result)
 
