@@ -4,8 +4,8 @@ import os
 import re
 import sqlite3
 import ssl
-import uuid
 import subprocess
+import uuid
 
 from flask import Flask, jsonify, _app_ctx_stack, request
 from flask_cors import CORS, cross_origin
@@ -246,6 +246,9 @@ def login():
 
 @app.route('/student_solution', methods=["GET", "POST"])
 @cross_origin()
+#-----------------------------------------------------------------------------------------
+#Function that saves the student's answer for a question,including the time and the date.
+#-----------------------------------------------------------------------------------------
 def student_solution():
     result = {
         "success": False,
@@ -278,6 +281,9 @@ def student_solution():
 
 @app.route('/question', methods=["POST", "GET"])
 @cross_origin()
+#----------------------------------------------------------------------------
+#Function that returns a question for the user(student).
+#----------------------------------------------------------------------------
 def question():
     data = request.get_json(force=True)
 
@@ -295,6 +301,10 @@ def question():
 
 @app.route('/add_question', methods=["POST", "GET"])
 @cross_origin()
+#-----------------------------------------------------------------------------------
+#Function that gives the teacher permission to add a question to the database,
+#so the system will generate exercises similarly to this specific question.
+#-----------------------------------------------------------------------------------
 def add_question():
     result = {
         "success": True,
@@ -303,6 +313,7 @@ def add_question():
     data = request.get_json(force=True)
     question = data.get("question")
     question_mathml = question.get("mathml") if question is not None else None
+    #question_subject = question.get("subject") if question is not None else None
     user = data.get("user")
     if not user:
         result["error_messages"].append("No user given, cannot validate creator is a teacher.")
