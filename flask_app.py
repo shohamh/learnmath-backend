@@ -7,6 +7,7 @@ import ssl
 import subprocess
 import sys
 import uuid
+import lxml.etree as ET
 
 from flask import Flask, jsonify, _app_ctx_stack, request
 from flask_cors import CORS, cross_origin
@@ -294,7 +295,16 @@ def question():
         print(out)
     except subprocess.CalledProcessError:
         print("algebra-problem-generator failed", file=sys.stderr)
-    problem = "9x^2+8x+79-3x+11=0"  # data.get("mathml")
+
+    try:
+        mathml = ET.fromstring("<math xmlns=\"http://www.w3.org/1998/Math/MathML\">\n  <mstyle displaystyle=\"true\">\n  <mrow>  <mn>2</mn><mi>z</mi><mi> r </mi><mo>-</mo><mn>3</mn><mo>-</mo><mi>b</mi><mo>/</mo><mi>b</mi><mo>/</mo><mi>b</mi><mo>-</mo><mi>b</mi>\n </mrow> </mstyle>\n</math>")
+        xslt = ET.parse("web-xslt/pmml2tex/mml2tex.xsl")
+        transform = ET.XSLT(xslt)
+        latex = transform(mathml)
+        print(ET.tostring(latex, pretty_print=True))
+    except ET.XSLTParseError as e:
+        print(e)
+    problem = "9x^2+8x+79-3x+11=0"
     result = {
         "success": True,
         "error_messages": [],

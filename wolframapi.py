@@ -10,4 +10,4 @@ res = client.query(query)
 
 for pod in res.pods:
     for subpod in pod.subpods:
-        print subpod.plaintext
+        print(subpod.plaintext)
