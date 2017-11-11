@@ -7,8 +7,8 @@ import ssl
 import subprocess
 import sys
 import uuid
-import lxml.etree as ET
 
+import lxml.etree as ET
 from flask import Flask, jsonify, _app_ctx_stack, request
 from flask_cors import CORS, cross_origin
 
@@ -354,6 +354,45 @@ def add_question():
 
     result["success"] = True
 
+    return jsonify(result)
+
+
+@app.route("/check_question" , methods=["GET","POST"])
+@cross_origin()
+#---------------------------------------------------------------------------------------------
+#This function checks the student answer for the question.
+#This function gets the question,the subject of the question and the students solutions.
+#---------------------------------------------------------------------------------------------
+def check_question(solutions ,function ,subject):
+
+    result = {
+           "success": True ,
+            "error_messages": [] ,
+            "solution": True
+
+    }
+    import wolframalpha
+
+    app_id = "LH259U-2X7QT3WQP4"
+
+    client = wolframalpha.Client(app_id)
+
+    if subject != "equation":
+     query = subject + " of " + function
+    else:
+        query = function
+
+    res = client.query(query)
+    count = solutions.length()
+
+    for solution in solutions:
+      for pod in res.pods:
+         i=0
+         for subpod in pod.subpods:
+            if solution[i] != subpod.plaintext and i==count:
+                result["solution"]=False
+                return jsonify(result)
+            i=i+1
     return jsonify(result)
 
 
