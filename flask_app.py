@@ -1,6 +1,7 @@
 import datetime
 import hashlib
 import os
+import random
 import re
 import sqlite3
 import ssl
@@ -12,7 +13,7 @@ import lxml.etree as ET
 from flask import Flask, jsonify, _app_ctx_stack, request
 from flask_cors import CORS, cross_origin
 
-apb_exec = "algebra-problem-generator/bin/Debug/netcoreapp2.0/publish/algebra-problem-generator.dll"
+apb_exec = "algebra-problem-generator"
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
 context.load_cert_chain(certfile="certs/cert.pem", keyfile="certs/key.pem")
@@ -290,21 +291,38 @@ def question():
     data = request.get_json(force=True)
 
     # running f# executable
-    try:
-        out = subprocess.check_output(["dotnet", apb_exec])
-        print(out)
-    except subprocess.CalledProcessError:
-        print("algebra-problem-generator failed", file=sys.stderr)
+    out = ""
 
+    source_problem_mml = "<math xmlns='http://www.w3.org/1998/Math/MathML'><mn>0</mn></math>"
+
+    rows = query_db('SELECT * FROM question_templates')
+
+    source_problem_mml = rows[random.randrange(0, len(rows))]["template_mathml"]
+
+    similar_problem_mathml = source_problem_mml
     try:
-        mathml = ET.fromstring("<math xmlns=\"http://www.w3.org/1998/Math/MathML\">\n  <mstyle displaystyle=\"true\">\n  <mrow>  <mn>2</mn><mi>z</mi><mi> r </mi><mo>-</mo><mn>3</mn><mo>-</mo><mi>b</mi><mo>/</mo><mi>b</mi><mo>/</mo><mi>b</mi><mo>-</mo><mi>b</mi>\n </mrow> </mstyle>\n</math>")
-        xslt = ET.parse("web-xslt/pmml2tex/mml2tex.xsl")
+        similar_problem_mathml = subprocess.check_output(
+            ["dotnet", "run", "--project", apb_exec, source_problem_mml]).decode('utf-8')
+        if not similar_problem_mathml.strip():
+            similar_problem_mathml = source_problem_mml
+        print(similar_problem_mathml)
+    except subprocess.CalledProcessError as e:
+        print("algebra-problem-generator failed. " + str(e), file=sys.stderr)
+
+    latex = ""
+    try:
+        mathml = ET.fromstring(similar_problem_mathml)
+        xslt = ET.parse("web-xslt/pmml2tex/mmltex.xsl")
         transform = ET.XSLT(xslt)
-        latex = transform(mathml)
-        print(ET.tostring(latex, pretty_print=True))
+        latex_tree = transform(mathml)
+        latex = str(latex_tree).replace('$', '').strip()
+        print(latex)
     except ET.XSLTParseError as e:
         print(e)
-    problem = "9x^2+8x+79-3x+11=0"
+        print(similar_problem_mathml)
+        print(latex)
+
+    problem = latex
     result = {
         "success": True,
         "error_messages": [],
@@ -357,18 +375,17 @@ def add_question():
     return jsonify(result)
 
 
-@app.route("/check_question" , methods=["GET","POST"])
+@app.route("/check_question", methods=["GET", "POST"])
 @cross_origin()
-#---------------------------------------------------------------------------------------------
-#This function checks the student answer for the question.
-#This function gets the question,the subject of the question and the students solutions.
-#---------------------------------------------------------------------------------------------
-def check_question(solutions ,function ,subject):
-
+# ---------------------------------------------------------------------------------------------
+# This function checks the student answer for the question.
+# This function gets the question,the subject of the question and the students solutions.
+# ---------------------------------------------------------------------------------------------
+def check_question(solutions, function, subject):
     result = {
-           "success": True ,
-            "error_messages": [] ,
-            "solution": True
+        "success": True,
+        "error_messages": [],
+        "solution": True
 
     }
     import wolframalpha
@@ -378,7 +395,7 @@ def check_question(solutions ,function ,subject):
     client = wolframalpha.Client(app_id)
 
     if subject != "equation":
-     query = subject + " of " + function
+        query = subject + " of " + function
     else:
         query = function
 
@@ -386,17 +403,14 @@ def check_question(solutions ,function ,subject):
     count = solutions.length()
 
     for solution in solutions:
-      for pod in res.pods:
-         i=0
-         for subpod in pod.subpods:
-            if solution[i] != subpod.plaintext and i==count:
-                result["solution"]=False
-                return jsonify(result)
-            i=i+1
+        for pod in res.pods:
+            i = 0
+            for subpod in pod.subpods:
+                if solution[i] != subpod.plaintext and i == count:
+                    result["solution"] = False
+                    return jsonify(result)
+                i = i + 1
     return jsonify(result)
-
-
-
 
 
 if __name__ == '__main__':
