@@ -8,17 +8,22 @@ import ssl
 import subprocess
 import sys
 import uuid
-import dicttoxml
-from wolframalpha import wap
 
 import lxml.etree as ET
+import xmltodict
 from flask import Flask, jsonify, _app_ctx_stack, request
 from flask_cors import CORS, cross_origin
+
+from wolframalpha import wap
 
 apb_exec = "algebra-problem-generator"
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
 context.load_cert_chain(certfile="certs/cert.pem", keyfile="certs/key.pem")
+
+wa_server = 'http://api.wolframalpha.com/v2/query'
+
+wa_appid = 'LH259U-2X7QT3WQP4'
 
 DATABASE = 'db.db'
 app = Flask(__name__)
@@ -377,6 +382,61 @@ def add_question():
     return jsonify(result)
 
 
+def dicttoxml(dict):
+    res = xmltodict.unparse(dict)
+    xml_prefix = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
+    if xml_prefix in res:
+        res = res[len(xml_prefix):]
+    return res
+
+
+def get_wolfram_solutions(input):
+    waeo = wap.WolframAlphaEngine(wa_appid, wa_server)
+    query = waeo.CreateQuery(input)
+    res = waeo.PerformQuery(query)
+    waeqr = wap.WolframAlphaQueryResult(res)
+    jsonresult = waeqr.JsonResult()
+
+    wa_solutions = []
+
+    for pod in jsonresult["pod"]:
+        if "solution" in pod["title"].lower():
+            if isinstance(pod["subpod"], dict):
+                subpod = pod["subpod"]
+                try:
+                    actual_answer = subpod["mathml"]["math"]["mtable"]["mtr"]["mtd"]
+                except KeyError:
+                    actual_answer = subpod["mathml"]["math"]
+                mathml = dicttoxml(actual_answer)
+                wa_solutions.append(mathml)
+            else:  # list
+                for subpod in pod["subpod"]:
+                    try:
+                        actual_answer = subpod["mathml"]["math"]["mtable"]["mtr"]["mtd"]
+                    except KeyError:
+                        actual_answer = subpod["mathml"]["math"]
+                    mathml = dicttoxml(actual_answer)
+                    wa_solutions.append(mathml)
+    return wa_solutions
+
+
+def check_solutions_equality(solution1, solution2):
+    try:
+        out = subprocess.check_output(
+            ["dotnet", "run", "--project", apb_exec, "--checkequality", solution1, solution2]).decode('utf-8')
+        print(out)
+        bool = out.strip()[:-5].strip()
+        if bool == "true":
+            return True
+        elif bool == "false":
+            return False
+        else:
+            return False
+
+    except subprocess.CalledProcessError as e:
+        print("algebra-problem-generator failed. " + str(e), file=sys.stderr)
+
+
 @app.route("/check_solution", methods=["POST"])
 @cross_origin()
 # ---------------------------------------------------------------------------------------------
@@ -386,54 +446,53 @@ def add_question():
 def check_solution():
     data = request.get_json(force=True)
 
-    mathml = data.get("mathml")
+    student_solutions = data.get("solutions")
+    question = data.get("question")  # TODO: INSECURE FIX LATER, make question come from server&session
+    if isinstance(student_solutions, str):
+        student_solutions = [student_solutions]
 
     result = {
         "success": True,
         "error_messages": [],
-        "correct": True
+        "correct": False
 
     }
 
-    server = 'http://api.wolframalpha.com/v2/query'
+    wa_solutions = get_wolfram_solutions(question)
 
-    appid = 'LH259U-2X7QT3WQP4'
-    input = '2x^2+2x-4=0'
+    input = "<math>"
+    for i, sol in enumerate(wa_solutions + student_solutions):
+        if isinstance(sol, bytes):
+            sol = sol.decode('utf-8')
+        input += sol
+        if i != len(wa_solutions + student_solutions) - 1:
+            input += "<mo>,</mo>"
+    input += "</math>"
 
-    waeo = wap.WolframAlphaEngine(appid, server)
-    query = waeo.CreateQuery(input)
-    result = waeo.PerformQuery(query)
-    waeqr = wap.WolframAlphaQueryResult(result)
-    jsonresult = waeqr.JsonResult()
+    wa_verify_solutions = get_wolfram_solutions(input)
 
-    for pod in jsonresult["pod"]:
-        if "Solutions" in pod["title"]:
-            for subpod in pod["subpod"]:
-                mathml = "<math xmlns='http://www.w3.org/1998/Math/MathML'>" + (dicttoxml.dicttoxml(subpod["mathml"]["math"]["mtable"]["mtr"]["mtd"], attr_type=False, root=False).decode('utf-8')) + "</math>"
-                print(mathml)
+    # it means the student didnt fuck up the expression (taut hishuv), but might not have finished solving yet (not checking if their solution is of form: x=3)
+    if wa_verify_solutions != wa_solutions:
+        result["correct"] = False
 
-    #import wolframalpha
+    if len(student_solutions) != len(wa_solutions):
+        result["error_messages"].append("There are " + ("more" if len(wa_solutions) > len(
+            student_solutions) else "less") + "solutions to the problem than what you said.")  # TODO: add a "tips" key where to put different tips like this
+        result["correct"] = False
+    else:
+        amount_of_correct_solutions = 0
+        for wa_sol in wa_solutions:
+            for stu_sol in student_solutions:
+                if check_solutions_equality(wa_sol, stu_sol):
+                    amount_of_correct_solutions += 1
+        if amount_of_correct_solutions == len(wa_solutions):
+            result["correct"] = True
 
-    #app_id = "LH259U-2X7QT3WQP4"
+    print("Question: " + question)
+    print("Wolfram solutions for question: " + str(wa_solutions))
+    print("Student solutions: " + str(student_solutions))
+    print("Wolfram comparison of solutions: " + str(wa_verify_solutions))
 
-    #client = wolframalpha.Client(app_id)
-    #
-    # if subject != "equation":
-    #     query = subject + " of " + function
-    # else:
-    #     query = function
-    #
-    # res = client.query(query)
-    # count = solutions.length()
-    #
-    # for solution in solutions:
-    #     for pod in res.pods:
-    #         i = 0
-    #         for subpod in pod.subpods:
-    #             if solution[i] != subpod.plaintext and i == count:
-    #                 result["solution"] = False
-    #                 return jsonify(result)
-    #             i = i + 1
     return jsonify(result)
 
 
