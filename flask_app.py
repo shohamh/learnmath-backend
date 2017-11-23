@@ -8,6 +8,8 @@ import ssl
 import subprocess
 import sys
 import uuid
+import dicttoxml
+from wolframalpha import wap
 
 import lxml.etree as ET
 from flask import Flask, jsonify, _app_ctx_stack, request
@@ -392,11 +394,29 @@ def check_solution():
         "correct": True
 
     }
-    import wolframalpha
 
-    app_id = "LH259U-2X7QT3WQP4"
+    server = 'http://api.wolframalpha.com/v2/query'
 
-    client = wolframalpha.Client(app_id)
+    appid = 'LH259U-2X7QT3WQP4'
+    input = '2x^2+2x-4=0'
+
+    waeo = wap.WolframAlphaEngine(appid, server)
+    query = waeo.CreateQuery(input)
+    result = waeo.PerformQuery(query)
+    waeqr = wap.WolframAlphaQueryResult(result)
+    jsonresult = waeqr.JsonResult()
+
+    for pod in jsonresult["pod"]:
+        if "Solutions" in pod["title"]:
+            for subpod in pod["subpod"]:
+                mathml = "<math xmlns='http://www.w3.org/1998/Math/MathML'>" + (dicttoxml.dicttoxml(subpod["mathml"]["math"]["mtable"]["mtr"]["mtd"], attr_type=False, root=False).decode('utf-8')) + "</math>"
+                print(mathml)
+
+    #import wolframalpha
+
+    #app_id = "LH259U-2X7QT3WQP4"
+
+    #client = wolframalpha.Client(app_id)
     #
     # if subject != "equation":
     #     query = subject + " of " + function

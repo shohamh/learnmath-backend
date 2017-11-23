@@ -47,7 +47,7 @@ class WolframAlphaEngine:
 
     def PerformQuery(self, query=''):
         try:
-            r = requests.get(self.server + '?' + query, headers={
+            r = requests.get(self.server + '?' + query + "&format=mathml", headers={
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
             })
             result = r.text
