@@ -511,6 +511,7 @@ def check_solution():
         if wa_verify_solutions == wa_solutions:
             result["correct"] = True
 
+
         # if len(student_solutions) != len(wa_solutions):
         #     result["error_messages"].append("There are " + ("more" if len(wa_solutions) > len(
         #         student_solutions) else "less") + "solutions to the problem than what you said.")  # TODO: add a "tips" key where to put different tips like this
@@ -533,6 +534,56 @@ def check_solution():
     return jsonify(result)
 
 
+@app.route("/get_feedback", methods=["GET" , "POST"])
+@cross_origin()
+
+def get_feedback():
+
+    result = {
+        "success": False,
+        "student": None,
+        "error_messages": []
+    }
+
+    data = request.get_json(force = True)
+
+    student_name = data.get("student_name")
+    subject_name = data.get("subject_name")
+
+    subject_identity = query_db('SELECT subject_id FROM subjects WHERE subject_name=?',(subject_name,))
+
+    if not subject_identity:
+       result["error_messages"].append("This subject does not exist in math")
+       result["success"] = False
+       return jsonify(result)
+
+    student_identity = query_db('SELECT user_id FROM users WHERE username=?',(student_name,))
+
+    if not student_identity:
+       result["success"] = False
+       result["error_messages"].append("Student name does not exist...")
+       return  jsonify(result)
+
+    row = query_db('SELECT student_id,subject_name,sf.number_of_correct_solutions,sf.number_of_questions,sf.number_of_wrong_solutions FROM users,students_feedback_in_subject as sf,subjects  WHERE users.user_id=sf.student_id AND subjects.subject_id=? AND sf.subject_id=? AND student_id=?',(subject_identity,subject_identity,student_identity))
+    if not row:
+        result["error_messages"].append("Sorry, but this student didn't solve any question from that subject...")
+        result["success"] = False
+        return jsonify(result)
+
+
+    result["student"] = {
+      "student_id": row["student_id"],
+      "student_name": student_name,
+      "subject_name": row["subject_name"],
+      "number_of_questions": str(row["number_of_questions"]),
+      "number_of_correct_answers": str(row["number_of_correct_answers"]),
+      "number_of_wrong_answers": str(row["number_of_wrong_answers"])
+
+    }
+    return jsonify(result)
+
+
+
+
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080, debug=True, ssl_context=context)
-#
