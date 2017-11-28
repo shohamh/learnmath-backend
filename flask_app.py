@@ -309,7 +309,7 @@ def question():
     similar_problem_mathml = source_problem_mml
     try:
         similar_problem_mathml = subprocess.check_output(
-            ["dotnet", "run", "--project", apb_exec, source_problem_mml]).decode('utf-8')
+            ["dotnet", "run", "--project", apb_exec, "--generatesimilarterm", source_problem_mml]).decode('utf-8')
         if not similar_problem_mathml.strip():
             similar_problem_mathml = source_problem_mml
         print(similar_problem_mathml)
@@ -407,16 +407,30 @@ def get_wolfram_solutions(input):
                     actual_answer = subpod["mathml"]["math"]["mtable"]["mtr"]["mtd"]
                 except KeyError:
                     actual_answer = subpod["mathml"]["math"]
-                mathml = dicttoxml(actual_answer)
-                wa_solutions.append(mathml)
+                try:
+                    mathml = dicttoxml(actual_answer)
+                    wa_solutions.append(mathml)
+                except ValueError:
+                    if ("no solution" in x for x in actual_answer["mrow"]["mtext"]):
+                        pass
+                    else:
+                        print("Malformed answer from Wolfram|Alpha we don't know how to handle", file=sys.stderr)
+
             else:  # list
                 for subpod in pod["subpod"]:
                     try:
                         actual_answer = subpod["mathml"]["math"]["mtable"]["mtr"]["mtd"]
                     except KeyError:
                         actual_answer = subpod["mathml"]["math"]
-                    mathml = dicttoxml(actual_answer)
-                    wa_solutions.append(mathml)
+                    try:
+                        mathml = dicttoxml(actual_answer)
+                        wa_solutions.append(mathml)
+                    except ValueError:
+                        if ("no solution" in x for x in actual_answer["mrow"]["mtext"]):
+                            pass
+                        else:
+                            print("Malformed answer from Wolfram|Alpha we don't know how to handle", file=sys.stderr)
+
     return wa_solutions
 
 
@@ -425,7 +439,24 @@ def check_solutions_equality(solution1, solution2):
         out = subprocess.check_output(
             ["dotnet", "run", "--project", apb_exec, "--checkequality", solution1, solution2]).decode('utf-8')
         print(out)
-        bool = out.strip()[:-5].strip()
+        bool = out.strip()[-5:].strip()
+        if bool == "true":
+            return True
+        elif bool == "false":
+            return False
+        else:
+            return False
+
+    except subprocess.CalledProcessError as e:
+        print("algebra-problem-generator failed. " + str(e), file=sys.stderr)
+
+
+def is_final_answer_form(answer):
+    try:
+        out = subprocess.check_output(
+            ["dotnet", "run", "--project", apb_exec, "--isfinalanswerform", answer]).decode('utf-8')
+        print(out)
+        bool = out.strip()[-5:].strip()
         if bool == "true":
             return True
         elif bool == "false":
@@ -458,40 +489,46 @@ def check_solution():
 
     }
 
-    wa_solutions = get_wolfram_solutions(question)
-
-    input = "<math>"
-    for i, sol in enumerate(wa_solutions + student_solutions):
-        if isinstance(sol, bytes):
-            sol = sol.decode('utf-8')
-        input += sol
-        if i != len(wa_solutions + student_solutions) - 1:
-            input += "<mo>,</mo>"
-    input += "</math>"
-
-    wa_verify_solutions = get_wolfram_solutions(input)
-
-    # it means the student didnt fuck up the expression (taut hishuv), but might not have finished solving yet (not checking if their solution is of form: x=3)
-    if wa_verify_solutions != wa_solutions:
+    #TODO: [0] is wrong?
+    if not is_final_answer_form(student_solutions[0]):
         result["correct"] = False
-
-    if len(student_solutions) != len(wa_solutions):
-        result["error_messages"].append("There are " + ("more" if len(wa_solutions) > len(
-            student_solutions) else "less") + "solutions to the problem than what you said.")  # TODO: add a "tips" key where to put different tips like this
-        result["correct"] = False
+        result["error_messages"].append("Looks like you haven't finished solving the problem, keep at it!")
     else:
-        amount_of_correct_solutions = 0
-        for wa_sol in wa_solutions:
-            for stu_sol in student_solutions:
-                if check_solutions_equality(wa_sol, stu_sol):
-                    amount_of_correct_solutions += 1
-        if amount_of_correct_solutions == len(wa_solutions):
+
+        wa_solutions = get_wolfram_solutions(question)
+
+        input = "<math xmlns='http://www.w3.org/1998/Math/MathML'>"
+        for i, sol in enumerate(wa_solutions + student_solutions):
+            if isinstance(sol, bytes):
+                sol = sol.decode('utf-8')
+            input += sol
+            if i != len(wa_solutions + student_solutions) - 1:
+                input += "<mo>,</mo>"
+        input += "</math>"
+
+        wa_verify_solutions = get_wolfram_solutions(input)
+
+        if wa_verify_solutions == wa_solutions:
             result["correct"] = True
 
-    print("Question: " + question)
-    print("Wolfram solutions for question: " + str(wa_solutions))
-    print("Student solutions: " + str(student_solutions))
-    print("Wolfram comparison of solutions: " + str(wa_verify_solutions))
+        # if len(student_solutions) != len(wa_solutions):
+        #     result["error_messages"].append("There are " + ("more" if len(wa_solutions) > len(
+        #         student_solutions) else "less") + "solutions to the problem than what you said.")  # TODO: add a "tips" key where to put different tips like this
+        #     result["correct"] = False
+        # else:
+        #     amount_of_correct_solutions = 0
+        #     for wa_sol in wa_solutions:
+        #         wa_sol = "<math xmlns='http://www.w3.org/1998/Math/MathML'>" + wa_sol + "</math>"
+        #         for stu_sol in student_solutions:
+        #             if check_solutions_equality(wa_sol, stu_sol):
+        #                 amount_of_correct_solutions += 1
+        #     if amount_of_correct_solutions == len(wa_solutions):
+        #         result["correct"] = True
+
+        print("Question: " + question)
+        print("Wolfram solutions for question: " + str(wa_solutions))
+        print("Student solutions: " + str(student_solutions))
+        print("Wolfram comparison of solutions: " + str(wa_verify_solutions))
 
     return jsonify(result)
 
