@@ -302,11 +302,10 @@ def question():
     }
     data = request.get_json(force=True)
     sid = data.get("sid")
-    user_id = query_db('SELECT user_id FROM sessions WHERE session_key=?' (sid,))
+    user_id = query_db('SELECT user_id FROM sessions WHERE session_key=?'(sid, ))
     if not user_id:
         result["error_messages"].append("session key doesn't exist...")
         return jsonify(result)
-
 
     # running f# executable
     out = ""
@@ -315,18 +314,19 @@ def question():
 
     rows = query_db('SELECT * FROM question_templates')
 
-    template_id=rows[0]["template_id"]
-    check = query_db('SELECT subject_id FROM template_in_subject WHERE template_id=?' (template_id,))
+    template_id = rows[0]["template_id"]
+    check = query_db('SELECT subject_id FROM template_in_subject WHERE template_id=?'(template_id, ))
     if not check:
         result["error_messages"].append("template without a subject..")
         return jsonify(result)
     subject_id = check[0]["subject_id"]
 
     is_first_time_in_subject = False
-    first = query_db('SELECT * FROM students_feedback_in_subject WHERE student_id=? AND subject_id=?'(user_id,subject_id))
+    first = query_db(
+        'SELECT * FROM students_feedback_in_subject WHERE student_id=? AND subject_id=?'(user_id, subject_id))
     if not first:
         is_first_time_in_subject = True
-        execute_query_db('INSERT INTO students_feedback_in_subject VALUES(?,?,?,?,?)' (user_id,subject_id,1,0,0))
+        execute_query_db('INSERT INTO students_feedback_in_subject VALUES(?,?,?,?,?)'(user_id, subject_id, 1, 0, 0))
 
     source_problem_mml = rows[random.randrange(0, len(rows))]["template_mathml"]
 
@@ -358,9 +358,9 @@ def question():
     result["problem"] = problem
     result["success"] = True
     if is_first_time_in_subject == False:
-      execute_query_db(
-        'UPDATE students_feedback_in_subject SET number_of_questions=number_of_questions+1 WHERE student_id=? AND subject_id=?',
-        (user_id, subject_id))
+        execute_query_db(
+            'UPDATE students_feedback_in_subject SET number_of_questions=number_of_questions+1 WHERE student_id=? AND subject_id=?',
+            (user_id, subject_id))
 
     return jsonify(result)
 
@@ -408,9 +408,10 @@ def add_question():
 
     return jsonify(result)
 
-#----------------------------------------------------------------------
-#Inner function that converts dictionary representation to xml format.
-#----------------------------------------------------------------------
+
+# ----------------------------------------------------------------------
+# Inner function that converts dictionary representation to xml format.
+# ----------------------------------------------------------------------
 
 def dicttoxml(dict):
     res = xmltodict.unparse(dict)
@@ -419,9 +420,10 @@ def dicttoxml(dict):
         res = res[len(xml_prefix):]
     return res
 
-#--------------------------------------------------------------
-#Inner function that returns solution/s for a question.
-#--------------------------------------------------------------
+
+# --------------------------------------------------------------
+# Inner function that returns solution/s for a question.
+# --------------------------------------------------------------
 
 def get_wolfram_solutions(input):
     waeo = wap.WolframAlphaEngine(wa_appid, wa_server)
@@ -510,8 +512,8 @@ def is_final_answer_form(answer):
 def check_solution():
     data = request.get_json(force=True)
 
-    student_identity = data.get("student_id")
-    subject_identity = data.get("subject_id")
+    student_id = data.get("student_id")
+    subject_id = data.get("subject_id")
 
     student_solutions = data.get("solutions")
     question = data.get("question")  # TODO: INSECURE FIX LATER, make question come from server&session
@@ -525,16 +527,12 @@ def check_solution():
 
     }
 
-    #TODO: [0] is wrong?
+    # TODO: [0] is wrong?
     if not is_final_answer_form(student_solutions[0]):
         result["correct"] = False
         result["error_messages"].append("Looks like you haven't finished solving the problem, keep at it!")
-        execute_query_db(
-            'UPDATE students_feedback_in_subject SET number_of_wrong_solutions=number_of_wrong_solutions+1 WHERE student_id=? AND subject_id=?',
-            (student_identity, subject_identity))
 
     else:
-
         wa_solutions = get_wolfram_solutions(question)
 
         input = "<math xmlns='http://www.w3.org/1998/Math/MathML'>"
@@ -550,8 +548,6 @@ def check_solution():
 
         if wa_verify_solutions == wa_solutions:
             result["correct"] = True
-            execute_query_db('UPDATE students_feedback_in_subject SET number_of_correct_solutions=number_of_correct_solutions+1 WHERE student_id=? AND subject_id=?',(student_identity,subject_identity))
-
 
         # if len(student_solutions) != len(wa_solutions):
         #     result["error_messages"].append("There are " + ("more" if len(wa_solutions) > len(
@@ -572,63 +568,205 @@ def check_solution():
         print("Student solutions: " + str(student_solutions))
         print("Wolfram comparison of solutions: " + str(wa_verify_solutions))
 
+    if result["correct"]:
+        execute_query_db(
+            'UPDATE students_feedback_in_subject SET number_of_correct_solutions=number_of_correct_solutions+1 WHERE student_id=? AND subject_id=?',
+            (student_id, subject_id))
+    else:
+        execute_query_db(
+            'UPDATE students_feedback_in_subject SET number_of_wrong_solutions=number_of_wrong_solutions+1 WHERE student_id=? AND subject_id=?',
+            (student_id, subject_id))
+
     return jsonify(result)
 
 
-@app.route("/get_feedback", methods=["GET" , "POST"])
+@app.route("/get_feedback", methods=["GET", "POST"])
 @cross_origin()
-#------------------------------------------------------------------------------------------------------------------------
-#This function returns number of questions that were given for the student,number of mistakes,number of correct answers
-#------------------------------------------------------------------------------------------------------------------------
-
+# ------------------------------------------------------------------------------------------------------------------------
+# This function returns number of questions that were given for the student,number of mistakes,number of correct answers
+# ------------------------------------------------------------------------------------------------------------------------
 def get_feedback():
-
     result = {
         "success": False,
         "student": None,
         "error_messages": []
     }
 
-    data = request.get_json(force = True)
+    data = request.get_json(force=True)
 
     student_name = data.get("student_name")
     subject_name = data.get("subject_name")
 
-    subject_identity = query_db('SELECT subject_id FROM subjects WHERE subject_name=?',(subject_name,))
+    subject_id_row = query_db('SELECT subject_id FROM subjects WHERE subject_name=?', (subject_name,), one=True)
 
-    if not subject_identity:
-       result["error_messages"].append("This subject does not exist in math")
-       result["success"] = False
-       return jsonify(result)
+    if not subject_id_row:
+        result["error_messages"].append("This subject does not exist in the system")
+        result["success"] = False
+        return jsonify(result)
+    subject_id = subject_id_row["subject_id"]
 
-    student_identity = query_db('SELECT user_id FROM users WHERE username=?',(student_name,))
+    student_id_row = query_db('SELECT user_id FROM users WHERE username=?', (student_name,), one=True)
 
-    if not student_identity:
-       result["success"] = False
-       result["error_messages"].append("Student's name does not exist...")
-       return  jsonify(result)
+    if not student_id_row:
+        result["success"] = False
+        result["error_messages"].append("Student name does not exist...")
+        return jsonify(result)
 
-    row = query_db('SELECT student_id,subject_name,sf.number_of_correct_solutions,sf.number_of_questions,sf.number_of_wrong_solutions FROM users,students_feedback_in_subject as sf,subjects  WHERE users.user_id=sf.student_id AND subjects.subject_id=? AND sf.subject_id=? AND student_id=?',(subject_identity,subject_identity,student_identity))
+    student_id = student_id_row["user_id"]
+
+    row = query_db(
+        'SELECT student_id,subject_name,sf.number_of_correct_solutions,sf.number_of_questions,sf.number_of_wrong_solutions FROM users,students_feedback_in_subject as sf,subjects  WHERE users.user_id=sf.student_id AND subjects.subject_id=? AND sf.subject_id=? AND student_id=?',
+        (subject_id, subject_id, student_id))
     if not row:
-        result["error_messages"].append("Sorry, but this student didn't solve any question from that subject...")
+        result["error_messages"].append("The student didn't solve any question from this subject.")
         result["success"] = False
         return jsonify(result)
 
-
-    result["student"] = {
-      "student_id": row["student_id"],
-      "student_name": student_name,
-      "subject_name": row["subject_name"],
-      "number_of_questions": str(row["number_of_questions"]),
-      "number_of_correct_answers": str(row["number_of_correct_answers"]),
-      "number_of_wrong_answers": str(row["number_of_wrong_answers"])
+    result["feedback"] = {
+        "student_id": row["student_id"],
+        "student_name": student_name,
+        "subject_name": row["subject_name"],
+        "number_of_questions": str(row["number_of_questions"]),
+        "number_of_correct_answers": str(row["number_of_correct_solutions"]),
+        "number_of_wrong_answers": str(row["number_of_wrong_solutions"])
 
     }
     return jsonify(result)
 
 
+def user_from_sid(sid):
+    row = query_db('SELECT user_id FROM sessions WHERE session_key=?', [sid], one=True)
+    if not row:
+        return None
+    user_id = row["user_id"]
+    row = query_db('SELECT * FROM users WHERE user_id=?', [user_id], one=True)
+    if not row:
+        return None
+    return row
+
+
+@app.route('/add_subject', methods=["POST", "GET"])
+@cross_origin()
+def add_subject():
+    result = {
+        "success": False,
+        "error_messages": []
+    }
+    data = request.get_json(force=True)
+    subject_name = data.get("name")
+    sid = data.get("sid")
+    user = user_from_sid(sid)
+
+    if not sid:
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
+    if not user:
+        result["error_messages"].append("Invalid session_id.")
+        return jsonify(result)
+
+    if user["role"] != "Teacher":
+        result["error_messages"].append("Permission error, user is not a teacher.")
+        return jsonify(result)
+
+    subject_id = str(uuid.uuid4())
+
+    try:
+        execute_query_db('INSERT INTO subjects VALUES(?,?)', (subject_id, subject_name))
+    except sqlite3.Error as e:
+        result["error_messages"].append(e.args[0])
+        return jsonify(result)
+
+    result["success"] = True
+
+    return jsonify(result)
+
+
+@app.route('/add_curriculum', methods=["POST", "GET"])
+@cross_origin()
+def add_curriculum():
+    result = {
+        "success": False,
+        "error_messages": []
+    }
+    data = request.get_json(force=True)
+    curriculum_name = data.get("name")
+    curriculum_description = data.get("description")
+    sid = data.get("sid")
+    user = user_from_sid(sid)
+
+    if not sid:
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
+    if not user:
+        result["error_messages"].append("Invalid session_id.")
+        return jsonify(result)
+
+    if user["role"] != "Teacher":
+        result["error_messages"].append("Permission error, user is not a teacher.")
+        return jsonify(result)
+
+    curriculum_id = str(uuid.uuid4())
+
+    try:
+        execute_query_db('INSERT INTO curriculums VALUES(?,?,?)',
+                         (curriculum_id, curriculum_name, curriculum_description))
+    except sqlite3.Error as e:
+        result["error_messages"].append(e.args[0])
+        return jsonify(result)
+
+    result["success"] = True
+
+    return jsonify(result)
+
+
+@app.route('/add_subject_to_curriculum', methods=["POST", "GET"])
+@cross_origin()
+def add_subject_to_curriculum():
+    result = {
+        "success": False,
+        "error_messages": []
+    }
+    data = request.get_json(force=True)
+    curriculum_name = data.get("curriculum_name")
+    subject_name = data.get("subject_name")
+
+    sid = data.get("sid")
+    user = user_from_sid(sid)
+
+    if not sid:
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
+    if not user:
+        result["error_messages"].append("Invalid session_id.")
+        return jsonify(result)
+
+    if user["role"] != "Teacher":
+        result["error_messages"].append("Permission error, user is not a teacher.")
+        return jsonify(result)
+
+    row = query_db('SELECT curriculum_id FROM curriculums WHERE name=?', [curriculum_name], one=True)
+    if not row:
+        result["error_messages"].append("No such curriculum exists.")
+        return jsonify(result)
+    curriculum_id = row["curriculum_id"]
+
+    row = query_db('SELECT subject_id FROM subjects WHERE subject_name=?', [subject_name], one=True)
+    if not row:
+        result["error_messages"].append("No such subject exists.")
+        return jsonify(result)
+    subject_id = row["subject_id"]
+
+    try:
+        execute_query_db('INSERT INTO subject_in_curriculum VALUES(?,?)', (curriculum_id, subject_id))
+    except sqlite3.Error as e:
+        result["error_messages"].append(e.args[0])
+        return jsonify(result)
+
+    result["success"] = True
+
+    return jsonify(result)
 
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080, debug=True, ssl_context=context)
-#
+    #
