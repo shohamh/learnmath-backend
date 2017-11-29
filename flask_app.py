@@ -295,7 +295,18 @@ def student_solution():
 # Function that returns a question for the user(student).
 # ----------------------------------------------------------------------------
 def question():
+    result = {
+        "success": False,
+        "error_messages": [],
+        "problem": ""
+    }
     data = request.get_json(force=True)
+    sid = data.get("sid")
+    user_id = query_db('SELECT user_id FROM sessions WHERE session_key=?' (sid,))
+    if not user_id:
+        result["error_messages"].append("session key doesn't exist...")
+        return jsonify(result)
+
 
     # running f# executable
     out = ""
@@ -303,6 +314,19 @@ def question():
     source_problem_mml = "<math xmlns='http://www.w3.org/1998/Math/MathML'><mn>0</mn></math>"
 
     rows = query_db('SELECT * FROM question_templates')
+
+    template_id=rows[0]["template_id"]
+    check = query_db('SELECT subject_id FROM template_in_subject WHERE template_id=?' (template_id,))
+    if not check:
+        result["error_messages"].append("template without a subject..")
+        return jsonify(result)
+    subject_id = check[0]["subject_id"]
+
+    is_first_time_in_subject = False
+    first = query_db('SELECT * FROM students_feedback_in_subject WHERE student_id=? AND subject_id=?'(user_id,subject_id))
+    if not first:
+        is_first_time_in_subject = True
+        execute_query_db('INSERT INTO students_feedback_in_subject VALUES(?,?,?,?,?)' (user_id,subject_id,1,0,0))
 
     source_problem_mml = rows[random.randrange(0, len(rows))]["template_mathml"]
 
@@ -330,11 +354,14 @@ def question():
         print(latex)
 
     problem = latex
-    result = {
-        "success": True,
-        "error_messages": [],
-        "problem": problem
-    }
+
+    result["problem"] = problem
+    result["success"] = True
+    if is_first_time_in_subject == False:
+      execute_query_db(
+        'UPDATE students_feedback_in_subject SET number_of_questions=number_of_questions+1 WHERE student_id=? AND subject_id=?',
+        (user_id, subject_id))
+
     return jsonify(result)
 
 
@@ -381,6 +408,9 @@ def add_question():
 
     return jsonify(result)
 
+#----------------------------------------------------------------------
+#Inner function that converts dictionary representation to xml format.
+#----------------------------------------------------------------------
 
 def dicttoxml(dict):
     res = xmltodict.unparse(dict)
@@ -389,6 +419,9 @@ def dicttoxml(dict):
         res = res[len(xml_prefix):]
     return res
 
+#--------------------------------------------------------------
+#Inner function that returns solution/s for a question.
+#--------------------------------------------------------------
 
 def get_wolfram_solutions(input):
     waeo = wap.WolframAlphaEngine(wa_appid, wa_server)
@@ -477,6 +510,9 @@ def is_final_answer_form(answer):
 def check_solution():
     data = request.get_json(force=True)
 
+    student_identity = data.get("student_id")
+    subject_identity = data.get("subject_id")
+
     student_solutions = data.get("solutions")
     question = data.get("question")  # TODO: INSECURE FIX LATER, make question come from server&session
     if isinstance(student_solutions, str):
@@ -493,6 +529,10 @@ def check_solution():
     if not is_final_answer_form(student_solutions[0]):
         result["correct"] = False
         result["error_messages"].append("Looks like you haven't finished solving the problem, keep at it!")
+        execute_query_db(
+            'UPDATE students_feedback_in_subject SET number_of_wrong_solutions=number_of_wrong_solutions+1 WHERE student_id=? AND subject_id=?',
+            (student_identity, subject_identity))
+
     else:
 
         wa_solutions = get_wolfram_solutions(question)
@@ -510,6 +550,7 @@ def check_solution():
 
         if wa_verify_solutions == wa_solutions:
             result["correct"] = True
+            execute_query_db('UPDATE students_feedback_in_subject SET number_of_correct_solutions=number_of_correct_solutions+1 WHERE student_id=? AND subject_id=?',(student_identity,subject_identity))
 
 
         # if len(student_solutions) != len(wa_solutions):
@@ -536,6 +577,9 @@ def check_solution():
 
 @app.route("/get_feedback", methods=["GET" , "POST"])
 @cross_origin()
+#------------------------------------------------------------------------------------------------------------------------
+#This function returns number of questions that were given for the student,number of mistakes,number of correct answers
+#------------------------------------------------------------------------------------------------------------------------
 
 def get_feedback():
 
@@ -561,7 +605,7 @@ def get_feedback():
 
     if not student_identity:
        result["success"] = False
-       result["error_messages"].append("Student name does not exist...")
+       result["error_messages"].append("Student's name does not exist...")
        return  jsonify(result)
 
     row = query_db('SELECT student_id,subject_name,sf.number_of_correct_solutions,sf.number_of_questions,sf.number_of_wrong_solutions FROM users,students_feedback_in_subject as sf,subjects  WHERE users.user_id=sf.student_id AND subjects.subject_id=? AND sf.subject_id=? AND student_id=?',(subject_identity,subject_identity,student_identity))
@@ -587,4 +631,3 @@ def get_feedback():
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080, debug=True, ssl_context=context)
-#
