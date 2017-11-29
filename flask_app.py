@@ -367,36 +367,34 @@ def question():
 
 @app.route('/add_question', methods=["POST", "GET"])
 @cross_origin()
-# -----------------------------------------------------------------------------------
-# Function that gives the teacher permission to add a question to the database,
-# so the system will generate exercises similarly to this specific question.
-# -----------------------------------------------------------------------------------
 def add_question():
     result = {
-        "success": True,
+        "success": False,
         "error_messages": []
     }
     data = request.get_json(force=True)
     question = data.get("question")
     question_mathml = question.get("mathml") if question is not None else None
     # question_subject = question.get("subject") if question is not None else None
-    user = data.get("user")
+
+    sid = data.get("sid")
+    user = user_from_sid(sid)
+
+    if not sid:
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
     if not user:
-        result["error_messages"].append("No user given, cannot validate creator is a teacher.")
+        result["error_messages"].append("Invalid session_id.")
         return jsonify(result)
 
-    row = query_db('SELECT * FROM users WHERE username=?', [user.get("username")], one=True)
-    if not row:
-        result["error_messages"].append("No such user in database.")
-        return jsonify(result)
-    if row["role"] != "Teacher":
+    if user["role"] != "Teacher":
         result["error_messages"].append("Permission error, user is not a teacher.")
         return jsonify(result)
-    user_id = row["user_id"]
+
+    user_id = user["user_id"]
 
     template_id = str(uuid.uuid4())
     date_time = datetime.datetime.utcnow().isoformat()
-
     try:
         execute_query_db('INSERT INTO question_templates VALUES(?,?,?,?)',
                          (template_id, question_mathml, user_id, date_time))
@@ -764,6 +762,52 @@ def add_subject_to_curriculum():
 
     result["success"] = True
 
+    return jsonify(result)
+
+
+@app.route('/curriculums', methods=["POST", "GET"])
+@cross_origin()
+def curriculums():
+    result = {
+        "success": True,
+        "error_messages": [],
+        "curriculums": []
+    }
+
+    row = query_db('SELECT * FROM curriculums')
+    if not row:
+        result["error_messages"].append("No curriculums exist.")
+
+    else:
+        result["curriculums"] = [{"name": x["name"], "description": x["description"]} for x in row]
+    return jsonify(result)
+
+
+@app.route('/subjects_in_curriculum', methods=["POST", "GET"])
+@cross_origin()
+def subjects_in_curriculum():
+    result = {
+        "success": False,
+        "error_messages": [],
+        "subjects": []
+    }
+    data = request.get_json(force=True)
+    curriculum_name = data.get("curriculum")
+    row = query_db('SELECT curriculum_id FROM curriculums WHERE name=?', [curriculum_name], one=True)
+    if not row:
+        result["error_messages"].append("Curriculum doesn't exist.")
+        return jsonify(result)
+    curriculum_id = row["curriculum_id"]
+    subject_ids_row = query_db('SELECT subject_id FROM subject_in_curriculum WHERE curriculum_id=?', [curriculum_id])
+    if not subject_ids_row:
+        result["error_messages"].append("Curriculum doesn't exist or doesn't have any subjects yet.")
+        return jsonify(result)
+    subject_ids = [x["subject_id"] for x in subject_ids_row]
+    subjects_row = query_db('SELECT * FROM subjects WHERE subject_id IN ({})'.format(','.join('?' * len(subject_ids))), subject_ids)
+    subjects = [{"name": x["subject_name"]} for x in subjects_row]
+    result["subjects"] = subjects
+
+    result["success"] = True
     return jsonify(result)
 
 
