@@ -435,17 +435,18 @@ def dicttoxml(dict):
 # Inner function that returns solution/s for a question.
 # --------------------------------------------------------------
 
-def get_wolfram_solutions(input):
+def get_wolfram_solutions(input, mathml=True, rerun_mathml=True):
     waeo = wap.WolframAlphaEngine(wa_appid, wa_server)
     query = waeo.CreateQuery(input)
-    res = waeo.PerformQuery(query)
+    res = waeo.PerformQuery(query, mathml=mathml)
     waeqr = wap.WolframAlphaQueryResult(res)
     jsonresult = waeqr.JsonResult()
 
     wa_solutions = []
-
+    solution_pod_found = False
     for pod in jsonresult["pod"]:
         if "solution" in pod["title"].lower():
+            solution_pod_found = True
             if isinstance(pod["subpod"], dict):
                 subpod = pod["subpod"]
                 try:
@@ -475,7 +476,38 @@ def get_wolfram_solutions(input):
                             pass
                         else:
                             print("Malformed answer from Wolfram|Alpha we don't know how to handle", file=sys.stderr)
-
+    if not solution_pod_found:
+        for pod in jsonresult["pod"]:
+            if "result" in pod["title"].lower():
+                if isinstance(pod["subpod"], dict):
+                    subpod = pod["subpod"]
+                    try:
+                        actual_answer = subpod["mathml"]["math"]["mtable"]["mtr"]["mtd"]
+                    except KeyError:
+                        actual_answer = subpod["mathml"]["math"]
+                    try:
+                        mathml = dicttoxml(actual_answer)
+                        wa_solutions += get_wolfram_solutions(mathml)
+                    except ValueError:
+                        if ("no solution" in x for x in actual_answer["mrow"]["mtext"]):
+                            pass
+                        else:
+                            print("Malformed answer from Wolfram|Alpha we don't know how to handle", file=sys.stderr)
+                else:  # list
+                    for subpod in pod["subpod"]:
+                        try:
+                            actual_answer = subpod["mathml"]["math"]["mtable"]["mtr"]["mtd"]
+                        except KeyError:
+                            actual_answer = subpod["mathml"]["math"]
+                        try:
+                            mathml = dicttoxml(actual_answer)
+                            wa_solutions += get_wolfram_solutions(mathml)
+                        except ValueError:
+                            if ("no solution" in x for x in actual_answer["mrow"]["mtext"]):
+                                pass
+                            else:
+                                print("Malformed answer from Wolfram|Alpha we don't know how to handle",
+                                      file=sys.stderr)
     return wa_solutions
 
 

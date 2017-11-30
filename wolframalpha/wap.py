@@ -45,9 +45,9 @@ class WolframAlphaEngine:
         waeq.ToURL()
         return waeq.Query
 
-    def PerformQuery(self, query=''):
+    def PerformQuery(self, query='', mathml=True):
         try:
-            r = requests.get(self.server + '?' + query + "&format=mathml", headers={
+            r = requests.get(self.server + '?' + query + ("&format=mathml" if mathml else ""), headers={
                 "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
             })
             result = r.text
