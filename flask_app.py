@@ -610,14 +610,32 @@ def check_solution():
         print("Student solutions: " + str(student_solutions))
         print("Wolfram comparison of solutions: " + str(wa_verify_solutions))
 
-    if result["correct"]:
-        execute_query_db(
-            'UPDATE students_feedback_in_subject SET number_of_correct_solutions=number_of_correct_solutions+1 WHERE student_id=? AND subject_id=?',
-            (student_id, subject_id))
+    row = query_db('SELECT * FROM students_feedback_in_subject WHERE student_id=? AND subject_id=?',
+                   [student_id, subject_id])
+    if not row:
+        try:
+            execute_query_db("INSERT INTO students_feedback_in_subject VALUES (?,?,?,?,?)",
+                             [student_id, subject_id, 1, 1 if result["correct"] else 0, 0 if result["correct"] else 1])
+        except sqlite3.Error as e:
+            #result["error_messages"].append(e.args[0])
+            return jsonify(result)
     else:
-        execute_query_db(
-            'UPDATE students_feedback_in_subject SET number_of_wrong_solutions=number_of_wrong_solutions+1 WHERE student_id=? AND subject_id=?',
-            (student_id, subject_id))
+        if result["correct"]:
+            try:
+                execute_query_db(
+                    'UPDATE students_feedback_in_subject SET number_of_correct_solutions=number_of_correct_solutions+1 WHERE student_id=? AND subject_id=?',
+                    (student_id, subject_id))
+            except sqlite3.Error as e:
+                #result["error_messages"].append(e.args[0])
+                return jsonify(result)
+        else:
+            try:
+                execute_query_db(
+                    'UPDATE students_feedback_in_subject SET number_of_wrong_solutions=number_of_wrong_solutions+1 WHERE student_id=? AND subject_id=?',
+                    (student_id, subject_id))
+            except sqlite3.Error as e:
+                #result["error_messages"].append(e.args[0])
+                return jsonify(result)
 
     return jsonify(result)
 
