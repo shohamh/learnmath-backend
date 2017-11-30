@@ -331,8 +331,19 @@ def question():
     # if not first:
     #     is_first_time_in_subject = True
     #     execute_query_db('INSERT INTO students_feedback_in_subject VALUES(?,?,?,?,?)'(user_id, subject_id, 1, 0, 0))
+    random_index = random.randrange(0, len(rows))
+    source_problem_mml = rows[random_index]["template_mathml"]
+    template_id = rows[random_index]["template_id"]
 
-    source_problem_mml = rows[random.randrange(0, len(rows))]["template_mathml"]
+    subject_ids_row = query_db('SELECT subject_id FROM template_in_subject WHERE template_id=?',
+                               [template_id])
+    # if not subject_ids_row:
+    #     #result["error_messages"].append("No subjects for template.")
+    #     return jsonify(result)
+    subject_ids = [x["subject_id"] for x in subject_ids_row]
+    subjects_row = query_db(
+        'SELECT * FROM subjects WHERE subject_id IN ({})'.format(','.join('?' * len(subject_ids))), subject_ids)
+    subjects = [x["subject_name"] for x in subjects_row]
 
     similar_problem_mathml = source_problem_mml
     try:
@@ -360,6 +371,7 @@ def question():
     problem = latex
 
     result["problem"] = problem
+    result["subjects"] = subjects
     result["success"] = True
     # if is_first_time_in_subject == False:
     #     execute_query_db(
@@ -552,22 +564,30 @@ def is_final_answer_form(answer):
 # This function gets the question,the subject of the question and the students solutions.
 # ---------------------------------------------------------------------------------------------
 def check_solution():
-    data = request.get_json(force=True)
-
-    student_id = data.get("student_id")
-    subject_id = data.get("subject_id")
-
-    student_solutions = data.get("solutions")
-    question = data.get("question")  # TODO: INSECURE FIX LATER, make question come from server&session
-    if isinstance(student_solutions, str):
-        student_solutions = [student_solutions]
-
     result = {
         "success": True,
         "error_messages": [],
         "correct": False
 
     }
+    data = request.get_json(force=True)
+    sid = data.get("sid")
+    user = user_from_sid(sid)
+
+    if not sid:
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
+    if not user:
+        result["error_messages"].append("Invalid session_id.")
+        return jsonify(result)
+
+    student_id = user["user_id"]
+
+    student_solutions = data.get("solutions")
+    question = data.get("question")  # TODO: INSECURE FIX LATER, make question come from server&session
+    subject_names = data.get("subjects")
+    if isinstance(student_solutions, str):
+        student_solutions = [student_solutions]
 
     # TODO: [0] is wrong?
     if not is_final_answer_form(student_solutions[0]):
@@ -609,32 +629,31 @@ def check_solution():
         print("Wolfram solutions for question: " + str(wa_solutions))
         print("Student solutions: " + str(student_solutions))
         print("Wolfram comparison of solutions: " + str(wa_verify_solutions))
+    subject_ids_row = query_db('SELECT subject_id FROM subjects WHERE subject_name IN ({})'.format(','.join('?' * len(subject_names))), subject_names)
+    # if not subject_ids_row:
+    #     result["error_messages"].append("Curriculum doesn't exist or doesn't have any subjects yet.")
+    #     return jsonify(result)
+    subject_ids = [x["subject_id"] for x in subject_ids_row]
 
-    row = query_db('SELECT * FROM students_feedback_in_subject WHERE student_id=? AND subject_id=?',
-                   [student_id, subject_id])
-    if not row:
-        try:
-            execute_query_db("INSERT INTO students_feedback_in_subject VALUES (?,?,?,?,?)",
-                             [student_id, subject_id, 1, 1 if result["correct"] else 0, 0 if result["correct"] else 1])
-        except sqlite3.Error as e:
-            #result["error_messages"].append(e.args[0])
-            return jsonify(result)
-    else:
-        if result["correct"]:
+    for subject_id in subject_ids:
+        row = query_db('SELECT * FROM students_feedback_in_subject WHERE student_id=? AND subject_id=?',
+                       [student_id, subject_id])
+
+        if not row:
             try:
-                execute_query_db(
-                    'UPDATE students_feedback_in_subject SET number_of_correct_solutions=number_of_correct_solutions+1 WHERE student_id=? AND subject_id=?',
-                    (student_id, subject_id))
+                execute_query_db("INSERT INTO students_feedback_in_subject VALUES (?,?,?,?,?)",
+                                 [student_id, subject_id, 1, 1 if result["correct"] else 0, 0 if result["correct"] else 1])
             except sqlite3.Error as e:
-                #result["error_messages"].append(e.args[0])
+                result["error_messages"].append(e.args[0])
                 return jsonify(result)
         else:
             try:
                 execute_query_db(
-                    'UPDATE students_feedback_in_subject SET number_of_wrong_solutions=number_of_wrong_solutions+1 WHERE student_id=? AND subject_id=?',
-                    (student_id, subject_id))
+                    'UPDATE students_feedback_in_subject SET {0}={0}+1 WHERE student_id=? AND subject_id=?'.format(
+                        "number_of_correct_solutions" if result["correct"] else "number_of_wrong_solutions"),
+                    [student_id, subject_id])
             except sqlite3.Error as e:
-                #result["error_messages"].append(e.args[0])
+                result["error_messages"].append(e.args[0])
                 return jsonify(result)
 
     return jsonify(result)
@@ -676,7 +695,7 @@ def get_feedback():
 
     row = query_db(
         'SELECT student_id,subject_name,sf.number_of_correct_solutions,sf.number_of_questions,sf.number_of_wrong_solutions FROM users,students_feedback_in_subject as sf,subjects  WHERE users.user_id=sf.student_id AND subjects.subject_id=? AND sf.subject_id=? AND student_id=?',
-        (subject_id, subject_id, student_id))
+        (subject_id, subject_id, student_id), one=True)
     if not row:
         result["error_messages"].append("The student didn't solve any question from this subject.")
         result["success"] = False
@@ -691,6 +710,7 @@ def get_feedback():
         "number_of_wrong_answers": str(row["number_of_wrong_solutions"])
 
     }
+    result["success"] = True
     return jsonify(result)
 
 
