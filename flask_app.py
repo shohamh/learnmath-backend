@@ -302,9 +302,13 @@ def question():
     }
     data = request.get_json(force=True)
     sid = data.get("sid")
-    user_id = query_db('SELECT user_id FROM sessions WHERE session_key=?'(sid, ))
-    if not user_id:
-        result["error_messages"].append("session key doesn't exist...")
+    user = user_from_sid(sid)
+
+    if not sid:
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
+    if not user:
+        result["error_messages"].append("Invalid session_id.")
         return jsonify(result)
 
     # running f# executable
@@ -313,20 +317,20 @@ def question():
     source_problem_mml = "<math xmlns='http://www.w3.org/1998/Math/MathML'><mn>0</mn></math>"
 
     rows = query_db('SELECT * FROM question_templates')
-
-    template_id = rows[0]["template_id"]
-    check = query_db('SELECT subject_id FROM template_in_subject WHERE template_id=?'(template_id, ))
-    if not check:
-        result["error_messages"].append("template without a subject..")
-        return jsonify(result)
-    subject_id = check[0]["subject_id"]
-
-    is_first_time_in_subject = False
-    first = query_db(
-        'SELECT * FROM students_feedback_in_subject WHERE student_id=? AND subject_id=?'(user_id, subject_id))
-    if not first:
-        is_first_time_in_subject = True
-        execute_query_db('INSERT INTO students_feedback_in_subject VALUES(?,?,?,?,?)'(user_id, subject_id, 1, 0, 0))
+    #
+    # template_id = rows[0]["template_id"]
+    # check = query_db('SELECT subject_id FROM template_in_subject WHERE template_id=?'(template_id, ))
+    # if not check:
+    #     result["error_messages"].append("template without a subject..")
+    #     return jsonify(result)
+    # subject_id = check[0]["subject_id"]
+    #
+    # is_first_time_in_subject = False
+    # first = query_db(
+    #     'SELECT * FROM students_feedback_in_subject WHERE student_id=? AND subject_id=?'(user_id, subject_id))
+    # if not first:
+    #     is_first_time_in_subject = True
+    #     execute_query_db('INSERT INTO students_feedback_in_subject VALUES(?,?,?,?,?)'(user_id, subject_id, 1, 0, 0))
 
     source_problem_mml = rows[random.randrange(0, len(rows))]["template_mathml"]
 
@@ -357,10 +361,10 @@ def question():
 
     result["problem"] = problem
     result["success"] = True
-    if is_first_time_in_subject == False:
-        execute_query_db(
-            'UPDATE students_feedback_in_subject SET number_of_questions=number_of_questions+1 WHERE student_id=? AND subject_id=?',
-            (user_id, subject_id))
+    # if is_first_time_in_subject == False:
+    #     execute_query_db(
+    #         'UPDATE students_feedback_in_subject SET number_of_questions=number_of_questions+1 WHERE student_id=? AND subject_id=?',
+    #         (user_id, subject_id))
 
     return jsonify(result)
 
@@ -375,7 +379,7 @@ def add_question():
     data = request.get_json(force=True)
     question = data.get("question")
     question_mathml = question.get("mathml") if question is not None else None
-    # question_subject = question.get("subject") if question is not None else None
+    subject_names = data.get("subjects") if question is not None else None
 
     sid = data.get("sid")
     user = user_from_sid(sid)
@@ -398,6 +402,14 @@ def add_question():
     try:
         execute_query_db('INSERT INTO question_templates VALUES(?,?,?,?)',
                          (template_id, question_mathml, user_id, date_time))
+
+        for subject_name in subject_names:
+            row = query_db('SELECT subject_id FROM subjects WHERE subject_name=?', [subject_name], one=True)
+            if not row:
+                result["error_messages"].append("No such subject exists.")
+                return jsonify(result)
+            subject_id = row["subject_id"]
+            execute_query_db('INSERT INTO template_in_subject VALUES (?,?)', [template_id, subject_id])
     except sqlite3.Error as e:
         result["error_messages"].append(e.args[0])
         return jsonify(result)
@@ -803,7 +815,8 @@ def subjects_in_curriculum():
         result["error_messages"].append("Curriculum doesn't exist or doesn't have any subjects yet.")
         return jsonify(result)
     subject_ids = [x["subject_id"] for x in subject_ids_row]
-    subjects_row = query_db('SELECT * FROM subjects WHERE subject_id IN ({})'.format(','.join('?' * len(subject_ids))), subject_ids)
+    subjects_row = query_db('SELECT * FROM subjects WHERE subject_id IN ({})'.format(','.join('?' * len(subject_ids))),
+                            subject_ids)
     subjects = [{"name": x["subject_name"]} for x in subjects_row]
     result["subjects"] = subjects
 
@@ -811,6 +824,50 @@ def subjects_in_curriculum():
     return jsonify(result)
 
 
+@app.route('/subjects_in_all_curriculums', methods=["POST", "GET"])
+@cross_origin()
+def subjects_in_all_curriculums():
+    result = {
+        "success": False,
+        "error_messages": [],
+        "subjects_in_curriculums": {}
+    }
+    data = request.get_json(force=True)
+    sid = data.get("sid")
+    user = user_from_sid(sid)
+
+    if not sid:
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
+    if not user:
+        result["error_messages"].append("Invalid session_id.")
+        return jsonify(result)
+
+    if user["role"] != "Teacher":
+        result["error_messages"].append("Permission error, user is not a teacher.")
+        return jsonify(result)
+
+    row = query_db('SELECT * FROM curriculums')
+    if not row:
+        result["error_messages"].append("Curriculum doesn't exist.")
+        return jsonify(result)
+    curriculums = {x["curriculum_id"]: {"curriculum_id": x["curriculum_id"], "name": x["name"]} for x in row}
+    for curriculum_id in curriculums.keys():
+        subject_ids_row = query_db('SELECT subject_id FROM subject_in_curriculum WHERE curriculum_id=?',
+                                   [curriculum_id])
+        if not subject_ids_row:
+            result["error_messages"].append("Curriculum doesn't exist or doesn't have any subjects yet.")
+            return jsonify(result)
+        subject_ids = [x["subject_id"] for x in subject_ids_row]
+        subjects_row = query_db(
+            'SELECT * FROM subjects WHERE subject_id IN ({})'.format(','.join('?' * len(subject_ids))), subject_ids)
+        # subjects = [{"name": x["subject_name"]} for x in subjects_row]
+        subjects = [x["subject_name"] for x in subjects_row]
+        result["subjects_in_curriculums"][curriculums[curriculum_id]["name"]] = subjects
+
+    result["success"] = True
+    return jsonify(result)
+
+
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080, debug=True, ssl_context=context)
-    #
