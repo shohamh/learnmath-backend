@@ -593,68 +593,85 @@ def check_solution():
     if not is_final_answer_form(student_solutions[0]):
         result["correct"] = False
         result["error_messages"].append("Looks like you haven't finished solving the problem, keep at it!")
+        return jsonify(result)
 
-    else:
-        wa_solutions = get_wolfram_solutions(question)
+    wa_solutions = get_wolfram_solutions(question)
 
-        input = "<math xmlns='http://www.w3.org/1998/Math/MathML'>"
-        for i, sol in enumerate(wa_solutions + student_solutions):
-            if isinstance(sol, bytes):
-                sol = sol.decode('utf-8')
-            input += sol
-            if i != len(wa_solutions + student_solutions) - 1:
-                input += "<mo>,</mo>"
-        input += "</math>"
+    input = "<math xmlns='http://www.w3.org/1998/Math/MathML'>"
+    for i, sol in enumerate(wa_solutions + student_solutions):
+        if isinstance(sol, bytes):
+            sol = sol.decode('utf-8')
+        input += sol
+        if i != len(wa_solutions + student_solutions) - 1:
+            input += "<mo>,</mo>"
+    input += "</math>"
 
-        wa_verify_solutions = get_wolfram_solutions(input)
+    wa_verify_solutions = get_wolfram_solutions(input)
 
-        if wa_verify_solutions == wa_solutions:
-            result["correct"] = True
+    if wa_verify_solutions == wa_solutions:
+        result["correct"] = True
 
-        # if len(student_solutions) != len(wa_solutions):
-        #     result["error_messages"].append("There are " + ("more" if len(wa_solutions) > len(
-        #         student_solutions) else "less") + "solutions to the problem than what you said.")  # TODO: add a "tips" key where to put different tips like this
-        #     result["correct"] = False
-        # else:
-        #     amount_of_correct_solutions = 0
-        #     for wa_sol in wa_solutions:
-        #         wa_sol = "<math xmlns='http://www.w3.org/1998/Math/MathML'>" + wa_sol + "</math>"
-        #         for stu_sol in student_solutions:
-        #             if check_solutions_equality(wa_sol, stu_sol):
-        #                 amount_of_correct_solutions += 1
-        #     if amount_of_correct_solutions == len(wa_solutions):
-        #         result["correct"] = True
+    # if len(student_solutions) != len(wa_solutions):
+    #     result["error_messages"].append("There are " + ("more" if len(wa_solutions) > len(
+    #         student_solutions) else "less") + "solutions to the problem than what you said.")  # TODO: add a "tips" key where to put different tips like this
+    #     result["correct"] = False
+    # else:
+    #     amount_of_correct_solutions = 0
+    #     for wa_sol in wa_solutions:
+    #         wa_sol = "<math xmlns='http://www.w3.org/1998/Math/MathML'>" + wa_sol + "</math>"
+    #         for stu_sol in student_solutions:
+    #             if check_solutions_equality(wa_sol, stu_sol):
+    #                 amount_of_correct_solutions += 1
+    #     if amount_of_correct_solutions == len(wa_solutions):
+    #         result["correct"] = True
 
-        print("Question: " + question)
-        print("Wolfram solutions for question: " + str(wa_solutions))
-        print("Student solutions: " + str(student_solutions))
-        print("Wolfram comparison of solutions: " + str(wa_verify_solutions))
-    subject_ids_row = query_db('SELECT subject_id FROM subjects WHERE subject_name IN ({})'.format(','.join('?' * len(subject_names))), subject_names)
+    print("Question: " + question)
+    print("Wolfram solutions for question: " + str(wa_solutions))
+    print("Student solutions: " + str(student_solutions))
+    print("Wolfram comparison of solutions: " + str(wa_verify_solutions))
+    # subject_ids_row = query_db(
+    #     'SELECT subject_id FROM subjects WHERE subject_name IN ({})'.format(','.join('?' * len(subject_names))),
+    #     subject_names)
     # if not subject_ids_row:
     #     result["error_messages"].append("Curriculum doesn't exist or doesn't have any subjects yet.")
     #     return jsonify(result)
-    subject_ids = [x["subject_id"] for x in subject_ids_row]
-
-    for subject_id in subject_ids:
-        row = query_db('SELECT * FROM students_feedback_in_subject WHERE student_id=? AND subject_id=?',
-                       [student_id, subject_id])
-
-        if not row:
-            try:
-                execute_query_db("INSERT INTO students_feedback_in_subject VALUES (?,?,?,?,?)",
-                                 [student_id, subject_id, 1, 1 if result["correct"] else 0, 0 if result["correct"] else 1])
-            except sqlite3.Error as e:
-                result["error_messages"].append(e.args[0])
-                return jsonify(result)
-        else:
-            try:
-                execute_query_db(
-                    'UPDATE students_feedback_in_subject SET {0}={0}+1 WHERE student_id=? AND subject_id=?'.format(
-                        "number_of_correct_solutions" if result["correct"] else "number_of_wrong_solutions"),
-                    [student_id, subject_id])
-            except sqlite3.Error as e:
-                result["error_messages"].append(e.args[0])
-                return jsonify(result)
+    # subject_ids = [x["subject_id"] for x in subject_ids_row]
+    #
+    # for subject_id in subject_ids:
+    #     row = query_db('SELECT * FROM students_feedback_in_subject WHERE student_id=? AND subject_id=?',
+    #                    [student_id, subject_id])
+    #
+    #     if not row:
+    #         try:
+    #             execute_query_db("INSERT INTO students_feedback_in_subject VALUES (?,?,?,?,?)",
+    #                              [student_id, subject_id, 1, 1 if result["correct"] else 0,
+    #                               0 if result["correct"] else 1])
+    #         except sqlite3.Error as e:
+    #             result["error_messages"].append(e.args[0])
+    #             return jsonify(result)
+    #     else:
+    #         try:
+    #             execute_query_db(
+    #                 'UPDATE students_feedback_in_subject SET {0}={0}+1 WHERE student_id=? AND subject_id=?'.format(
+    #                     "number_of_correct_solutions" if result["correct"] else "number_of_wrong_solutions"),
+    #                 [student_id, subject_id])
+    #         except sqlite3.Error as e:
+    #             result["error_messages"].append(e.args[0])
+    #             return jsonify(result)
+    template_id = ""
+    solution_time = 100
+    step_by_step_data = ""
+    mistake_type = None
+    mistake_step_number = None
+    import datetime
+    datetime = datetime.datetime.utcnow().isoformat()
+    try:
+        execute_query_db("INSERT INTO student_solutions VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                         [student_id, template_id, question, solution_time, str(student_solutions), str(wa_solutions),
+                          int(result["correct"]), step_by_step_data, mistake_type, mistake_step_number, datetime])
+    except sqlite3.Error as e:
+        result["error_messages"].append(e.args[0])
+        return jsonify(result)
 
     return jsonify(result)
 
@@ -937,6 +954,26 @@ def subjects_in_all_curriculums():
 
     result["success"] = True
     return jsonify(result)
+
+
+@app.route('/success_rate_stats', methods=["POST", "GET"])
+@cross_origin()
+def success_rate_stats():
+    result = {
+        "success": False,
+        "error_messages": [],
+        "stats": {}
+    }
+    data = request.get_json(force=True)
+    sid = data.get("sid")
+    user = user_from_sid(sid)
+
+    if not sid:
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
+    if not user:
+        result["error_messages"].append("Invalid session_id.")
+        return jsonify(result)
 
 
 if __name__ == '__main__':
