@@ -30,9 +30,9 @@ app = Flask(__name__)
 CORS(app)
 
 
-# ---------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 # Function that prepers the DataBase in order to execute a query.
-# ---------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 def get_db():
     db = getattr(_app_ctx_stack.top, '_database', None)
     if db is None:
@@ -42,9 +42,9 @@ def get_db():
     return db
 
 
-# -----------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 # Function that closes a connection to DataBase.
-# -----------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 @app.teardown_appcontext
 def close_connection(exception):
     db = getattr(_app_ctx_stack.top, '_database', None)
@@ -52,17 +52,17 @@ def close_connection(exception):
         db.close()
 
 
-# ---------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 # Function that convert the result of a query into a dictionary.
-# ---------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 def make_dicts(cursor, row):
     return dict((cursor.description[idx][0], value)
                 for idx, value in enumerate(row))
 
 
-# -------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 # Function that executes a query and returns the result(might be empty).
-# -------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 def query_db(query, args=(), one=False):
     cur = get_db().execute(query, args)
     rv = cur.fetchall()
@@ -70,19 +70,19 @@ def query_db(query, args=(), one=False):
     return (rv[0] if rv else None) if one else rv
 
 
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------
 # Function that executes a query that changes the db and commits (doesn't return anything, TODO: maybe it should?).
-# -------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------
 def execute_query_db(query, args=()):
     db = get_db()
     db.execute(query, args)
     db.commit()
 
 
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------
 # Function that checks the validity of an email.
 # This function gets an email string as an input and returns a boolean value.
-# -----------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 def is_email_valid(email):
     email_regex = re.compile(r"\w+[.|\w]\w+@\w+[.]\w+[.|\w+]\w+")
     if not email or not email_regex.match(email):
@@ -90,10 +90,10 @@ def is_email_valid(email):
     return True
 
 
-# -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------
 # Function that checks if an email is unique.
 # This function gets an email string as an input,and returns a boolean value.
-# -----------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 def is_unique_email(email):
     cur = query_db('SELECT username FROM users WHERE email=?', (email,))
     if not cur:
@@ -104,6 +104,9 @@ def is_unique_email(email):
 
 @app.route('/all_users', methods=["POST", "GET"])
 @cross_origin()
+#---------------------------------------------------------------------------------------------------------------------
+#Function that shows all users
+#--------------------------------------------------------------------------------------------------------------------
 def all_users():
     result = "<html><body><table border=\"1\">"
     result += "<tr><th>user_id</th><th>username</th><th>password</th><th>salt</th><th>email</th><th>registration_date</th><th>last_login_date</th></tr>"
@@ -120,6 +123,9 @@ def all_users():
 
 @app.route('/all_sessions', methods=["POST", "GET"])
 @cross_origin()
+#--------------------------------------------------------------------------------------------------------------------
+#Function that shows all user sessions.
+#--------------------------------------------------------------------------------------------------------------------
 def all_sessions():
     result = "<html><body><table border=\"1\">"
     result += "<tr><th>user_id</th><th>session_key</th><th>last_login</th><th>max_session_length</th></tr>"
@@ -136,6 +142,9 @@ def all_sessions():
 
 @app.route('/all_student_solutions', methods=["POST", "GET"])
 @cross_origin()
+#--------------------------------------------------------------------------------------------------------------------
+#Function that shows all of students solutions.
+#--------------------------------------------------------------------------------------------------------------------
 def all_student_solutions():
     result = "<html><body><table border=\"1\">"
     result += "<tr><th>user_id</th><th>question_id</th><th>solution_time</th><th>answer</th><th>correct_answer</th><th>datetime</th></tr>"
@@ -152,16 +161,19 @@ def all_student_solutions():
 
 @app.route('/')
 @cross_origin()
+#-------------------------------------------------------------------------------------------------------------------
+#Server's home page.
+#-------------------------------------------------------------------------------------------------------------------
 def homepage():
     return '<html><body><h2 color="green">LearnMath backend server</h2></body></html>'
 
 
 @app.route('/register', methods=["POST", "GET"])
 @cross_origin()
-# -------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
 # Function that adds a new user to the system.
 # This function returns an object that shows wheter the user succeeded in registration or not.
-# -------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
 def register():
     result = {
         "success": False,
@@ -205,10 +217,10 @@ def register():
 
 @app.route('/login', methods=["POST", "GET"])
 @cross_origin()
-# --------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
 # Function that checks if the username and password are existed in the database.
 # This function returns an object that shows wheter the user exist or not.
-# --------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
 def login():
     result = {
         "success": False,
@@ -256,9 +268,9 @@ def login():
 
 @app.route('/student_solution', methods=["GET", "POST"])
 @cross_origin()
-# -----------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
 # Function that saves the student's answer for a question,including the time and the date.
-# -----------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 def student_solution():
     result = {
         "success": False,
@@ -291,9 +303,9 @@ def student_solution():
 
 @app.route('/question', methods=["POST", "GET"])
 @cross_origin()
-# ----------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 # Function that returns a question for the user(student).
-# ----------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
 def question():
     result = {
         "success": False,
@@ -383,6 +395,9 @@ def question():
 
 @app.route('/add_question', methods=["POST", "GET"])
 @cross_origin()
+#----------------------------------------------------------------------------------------------------------------
+#This function adds a question to the templates stock.
+#----------------------------------------------------------------------------------------------------------------
 def add_question():
     result = {
         "success": False,
@@ -522,7 +537,9 @@ def get_wolfram_solutions(input, mathml=True, rerun_mathml=True):
                                       file=sys.stderr)
     return wa_solutions
 
-
+#--------------------------------------------------------------------------------------------------------------------
+#Inner function that checks if student's solution is correct or not.
+#--------------------------------------------------------------------------------------------------------------------
 def check_solutions_equality(solution1, solution2):
     try:
         out = subprocess.check_output(
@@ -539,7 +556,9 @@ def check_solutions_equality(solution1, solution2):
     except subprocess.CalledProcessError as e:
         print("algebra-problem-generator failed. " + str(e), file=sys.stderr)
 
-
+#------------------------------------------------------------------------------------------------------------------
+#Inner function that checks if student's solution is in final form like x=number.
+#-------------------------------------------------------------------------------------------------------------------
 def is_final_answer_form(answer):
     try:
         out = subprocess.check_output(
@@ -730,7 +749,9 @@ def get_feedback():
     result["success"] = True
     return jsonify(result)
 
-
+#--------------------------------------------------------------------------------------------------------------------
+#Inner function that gets as a parameter session id and returns all user properties.
+#--------------------------------------------------------------------------------------------------------------------
 def user_from_sid(sid):
     row = query_db('SELECT user_id FROM sessions WHERE session_key=?', [sid], one=True)
     if not row:
@@ -744,6 +765,9 @@ def user_from_sid(sid):
 
 @app.route('/add_subject', methods=["POST", "GET"])
 @cross_origin()
+#-------------------------------------------------------------------------------------------------------------------
+#Function that adds a subject to subjects table.
+#-------------------------------------------------------------------------------------------------------------------
 def add_subject():
     result = {
         "success": False,
@@ -780,6 +804,9 @@ def add_subject():
 
 @app.route('/add_curriculum', methods=["POST", "GET"])
 @cross_origin()
+#-------------------------------------------------------------------------------------------------------------------
+#Function that adds a new curriculum to curriculums table.
+#-------------------------------------------------------------------------------------------------------------------
 def add_curriculum():
     result = {
         "success": False,
@@ -818,6 +845,9 @@ def add_curriculum():
 
 @app.route('/add_subject_to_curriculum', methods=["POST", "GET"])
 @cross_origin()
+#-------------------------------------------------------------------------------------------------------------------
+#Function that adds a subject to a specific curriculum.
+#-------------------------------------------------------------------------------------------------------------------
 def add_subject_to_curriculum():
     result = {
         "success": False,
@@ -866,6 +896,9 @@ def add_subject_to_curriculum():
 
 @app.route('/curriculums', methods=["POST", "GET"])
 @cross_origin()
+#-------------------------------------------------------------------------------------------------------------------
+#Function that shows all curriculms.
+#-------------------------------------------------------------------------------------------------------------------
 def curriculums():
     result = {
         "success": True,
@@ -884,6 +917,9 @@ def curriculums():
 
 @app.route('/subjects_in_curriculum', methods=["POST", "GET"])
 @cross_origin()
+#-------------------------------------------------------------------------------------------------------------------
+#Function that shows all the subjects in a specific curriculum.
+#-------------------------------------------------------------------------------------------------------------------
 def subjects_in_curriculum():
     result = {
         "success": False,
@@ -913,6 +949,9 @@ def subjects_in_curriculum():
 
 @app.route('/subjects_in_all_curriculums', methods=["POST", "GET"])
 @cross_origin()
+#------------------------------------------------------------------------------------------------------------------
+#Function that shows all subjects in all curriculums.
+#-------------------------------------------------------------------------------------------------------------------
 def subjects_in_all_curriculums():
     result = {
         "success": False,
@@ -958,6 +997,9 @@ def subjects_in_all_curriculums():
 
 @app.route('/success_rate_stats', methods=["POST", "GET"])
 @cross_origin()
+#-------------------------------------------------------------------------------------------------------------------
+#Function that returns statistics about student's success rate in solving questions.
+#-------------------------------------------------------------------------------------------------------------------
 def success_rate_stats():
     result = {
         "success": False,
@@ -974,6 +1016,101 @@ def success_rate_stats():
     if not user:
         result["error_messages"].append("Invalid session_id.")
         return jsonify(result)
+
+
+def get_question(template_id):
+
+
+
+        # running f# executable
+        out = ""
+
+        source_problem_mml = "<math xmlns='http://www.w3.org/1998/Math/MathML'><mn>0</mn></math>"
+
+        rows = query_db('SELECT * FROM question_templates where template_id=?',(template_id,))
+        if not rows:
+            return None
+        random_index = random.randrange(0, len(rows))
+        source_problem_mml = rows[random_index]["template_mathml"]
+
+
+        subject_ids_row = query_db('SELECT subject_id FROM template_in_subject WHERE template_id=?',
+                                   [template_id])
+
+        subject_ids = [x["subject_id"] for x in subject_ids_row]
+        subjects_row = query_db(
+            'SELECT * FROM subjects WHERE subject_id IN ({})'.format(','.join('?' * len(subject_ids))), subject_ids)
+        subjects = [x["subject_name"] for x in subjects_row]
+
+        similar_problem_mathml = source_problem_mml
+        try:
+            similar_problem_mathml = subprocess.check_output(
+                ["dotnet", "run", "--project", apb_exec, "--generatesimilarterm", source_problem_mml]).decode('utf-8')
+            if not similar_problem_mathml.strip():
+                similar_problem_mathml = source_problem_mml
+            print(similar_problem_mathml)
+        except subprocess.CalledProcessError as e:
+            print("algebra-problem-generator failed. " + str(e), file=sys.stderr)
+
+        latex = ""
+        try:
+            mathml = ET.fromstring(similar_problem_mathml)
+            xslt = ET.parse("web-xslt/pmml2tex/mmltex.xsl")
+            transform = ET.XSLT(xslt)
+            latex_tree = transform(mathml)
+            latex = str(latex_tree).replace('$', '').strip()
+            print(latex)
+        except ET.XSLTParseError as e:
+            print(e)
+            print(similar_problem_mathml)
+            print(latex)
+
+        problem = latex
+
+        return problem
+#-------------------------------------------------------------------------------------------------------------------
+#Function that creates a practice session for a student.
+#-------------------------------------------------------------------------------------------------------------------
+@app.route('/create_practice_session' , methods = ["GET" , "POST"])
+@cross_origin()
+def create_practice_session():
+    result={
+        "success":True,
+        "Error_massages":[]
+
+
+    }
+    index = 0
+    practice_id = str(uuid.uuid4())
+    student_solution_id = str(uuid.uuid4())
+    data = request.get_json(force=True)
+
+    student_id = data.get("student_id")
+    for template_id in data.get("template_ids"):
+        question = str(get_question(template_id))
+        if question == "None":
+            result["success"] = False
+            return jsonify(result)
+        try:
+
+         execute_query_db('INSERT INTO practice_session_questions VALUES (?,?,?,?,?)',(practice_id,template_id,question,index,student_solution_id))
+
+        except sqlite3.Error as e:
+           result["Error_massages"].append(e.args[0])
+           return jsonify(result)
+
+        index=index+1
+
+    try:
+        execute_query_db('INSERT INTO practice_sessions VALUES (?,?,?,?)',
+                         (practice_id, student_id, datetime.datetime.utcnow().isoformat(),index))
+    except sqlite3.Error as e:
+        result["Error_massages"].append(e.args[0])
+        return jsonify(result)
+
+
+    return jsonify(result)
+
 
 
 if __name__ == '__main__':
