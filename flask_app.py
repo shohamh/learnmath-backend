@@ -1064,7 +1064,7 @@ def generate_similar_question(template_id):
 def create_practice_session():
     result = {
         "success": True,
-        "Error_massages": []
+        "Error_messages": []
 
     }
     index = 0
@@ -1073,7 +1073,8 @@ def create_practice_session():
     data = request.get_json(force=True)
 
     student_id = data.get("student_id")
-    for template_id in data.get("template_ids"):
+    if data.get("template_ids") is not None:
+     for template_id in data.get("template_ids"):
         question = generate_similar_question(template_id)
         correct_solutions = get_wolfram_solutions(question)
         if question is None:
@@ -1089,7 +1090,7 @@ def create_practice_session():
                              (practice_id, template_id, question, index, student_solution_id, correct_solutions))
 
         except sqlite3.Error as e:
-            result["Error_massages"].append(e.args[0])
+            result["Error_messages"].append(e.args[0])
             return jsonify(result)
 
         index += 1
@@ -1098,7 +1099,7 @@ def create_practice_session():
         execute_query_db('INSERT INTO practice_sessions VALUES (?,?,?,?)',
                          (practice_id, student_id, datetime.datetime.utcnow().isoformat(), index))
     except sqlite3.Error as e:
-        result["Error_massages"].append(e.args[0])
+        result["Error_messages"].append(e.args[0])
         return jsonify(result)
 
     return jsonify(result)
@@ -1151,7 +1152,7 @@ def get_subject_id_from_subject_name(subject_name):
 def get_practice_session_questions():
     result = {
         "success": True,
-        "error_massages": [],
+        "error_messages": [],
         "questions": [],
         "subjects": [],
         "curriculum": ""
@@ -1175,13 +1176,13 @@ def get_practice_session_questions():
 
     if not row:
         result["success"] = False
-        result["error_massages"].append("Sorry, there is no practice session for this user...")
+        result["error_messages"].append("Sorry, there is no practice session for this user...")
         return jsonify(result)
 
     questions = query_db('SELECT * FROM practice_session_questions WHERE practice_id=?' , [row["practice_id"]])
     if not questions:
         result["success"] = False
-        result["error_massages"].append("")
+        result["error_messages"].append("")
         return jsonify(result)
 
     for question in questions["question_mathml"]:
@@ -1199,7 +1200,7 @@ def get_practice_session_questions():
         if i == 0:
             subid = get_subject_id_from_subject_name(str(subject))
             if str(subid) == "None":
-                result["error_massages"].append("subject doesn't exist...")
+                result["error_messages"].append("subject doesn't exist...")
                 return jsonify(result)
             curriculum_name = get_curriculum_from_subject(subid)
             if str(curriculum_name) == "None":
