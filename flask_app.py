@@ -104,9 +104,9 @@ def is_unique_email(email):
 
 @app.route('/all_users', methods=["POST", "GET"])
 @cross_origin()
-#---------------------------------------------------------------------------------------------------------------------
-#Function that shows all users
-#--------------------------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------------
+# Function that shows all users
+# --------------------------------------------------------------------------------------------------------------------
 def all_users():
     result = "<html><body><table border=\"1\">"
     result += "<tr><th>user_id</th><th>username</th><th>password</th><th>salt</th><th>email</th><th>registration_date</th><th>last_login_date</th></tr>"
@@ -123,9 +123,9 @@ def all_users():
 
 @app.route('/all_sessions', methods=["POST", "GET"])
 @cross_origin()
-#--------------------------------------------------------------------------------------------------------------------
-#Function that shows all user sessions.
-#--------------------------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------
+# Function that shows all user sessions.
+# --------------------------------------------------------------------------------------------------------------------
 def all_sessions():
     result = "<html><body><table border=\"1\">"
     result += "<tr><th>user_id</th><th>session_key</th><th>last_login</th><th>max_session_length</th></tr>"
@@ -142,9 +142,9 @@ def all_sessions():
 
 @app.route('/all_student_solutions', methods=["POST", "GET"])
 @cross_origin()
-#--------------------------------------------------------------------------------------------------------------------
-#Function that shows all of students solutions.
-#--------------------------------------------------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------------------------------------
+# Function that shows all of students solutions.
+# --------------------------------------------------------------------------------------------------------------------
 def all_student_solutions():
     result = "<html><body><table border=\"1\">"
     result += "<tr><th>user_id</th><th>question_id</th><th>solution_time</th><th>answer</th><th>correct_answer</th><th>datetime</th></tr>"
@@ -161,9 +161,9 @@ def all_student_solutions():
 
 @app.route('/')
 @cross_origin()
-#-------------------------------------------------------------------------------------------------------------------
-#Server's home page.
-#-------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
+# Server's home page.
+# -------------------------------------------------------------------------------------------------------------------
 def homepage():
     return '<html><body><h2 color="green">LearnMath backend server</h2></body></html>'
 
@@ -395,9 +395,9 @@ def question():
 
 @app.route('/add_question', methods=["POST", "GET"])
 @cross_origin()
-#----------------------------------------------------------------------------------------------------------------
-#This function adds a question to the templates stock.
-#----------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------
+# This function adds a question to the templates stock.
+# ----------------------------------------------------------------------------------------------------------------
 def add_question():
     result = {
         "success": False,
@@ -537,9 +537,10 @@ def get_wolfram_solutions(input, mathml=True, rerun_mathml=True):
                                       file=sys.stderr)
     return wa_solutions
 
-#--------------------------------------------------------------------------------------------------------------------
-#Inner function that checks if student's solution is correct or not.
-#--------------------------------------------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------------------------------------------------
+# Inner function that checks if student's solution is correct or not.
+# --------------------------------------------------------------------------------------------------------------------
 def check_solutions_equality(solution1, solution2):
     try:
         out = subprocess.check_output(
@@ -556,9 +557,10 @@ def check_solutions_equality(solution1, solution2):
     except subprocess.CalledProcessError as e:
         print("algebra-problem-generator failed. " + str(e), file=sys.stderr)
 
-#------------------------------------------------------------------------------------------------------------------
-#Inner function that checks if student's solution is in final form like x=number.
-#-------------------------------------------------------------------------------------------------------------------
+
+# ------------------------------------------------------------------------------------------------------------------
+# Inner function that checks if student's solution is in final form like x=number.
+# -------------------------------------------------------------------------------------------------------------------
 def is_final_answer_form(answer):
     try:
         out = subprocess.check_output(
@@ -749,9 +751,10 @@ def get_feedback():
     result["success"] = True
     return jsonify(result)
 
-#--------------------------------------------------------------------------------------------------------------------
-#Inner function that gets as a parameter session id and returns all user properties.
-#--------------------------------------------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------------------------------------------------
+# Inner function that gets as a parameter session id and returns all user properties.
+# --------------------------------------------------------------------------------------------------------------------
 def user_from_sid(sid):
     row = query_db('SELECT user_id FROM sessions WHERE session_key=?', [sid], one=True)
     if not row:
@@ -765,9 +768,9 @@ def user_from_sid(sid):
 
 @app.route('/add_subject', methods=["POST", "GET"])
 @cross_origin()
-#-------------------------------------------------------------------------------------------------------------------
-#Function that adds a subject to subjects table.
-#-------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
+# Function that adds a subject to subjects table.
+# -------------------------------------------------------------------------------------------------------------------
 def add_subject():
     result = {
         "success": False,
@@ -804,9 +807,9 @@ def add_subject():
 
 @app.route('/add_curriculum', methods=["POST", "GET"])
 @cross_origin()
-#-------------------------------------------------------------------------------------------------------------------
-#Function that adds a new curriculum to curriculums table.
-#-------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
+# Function that adds a new curriculum to curriculums table.
+# -------------------------------------------------------------------------------------------------------------------
 def add_curriculum():
     result = {
         "success": False,
@@ -845,9 +848,9 @@ def add_curriculum():
 
 @app.route('/add_subject_to_curriculum', methods=["POST", "GET"])
 @cross_origin()
-#-------------------------------------------------------------------------------------------------------------------
-#Function that adds a subject to a specific curriculum.
-#-------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
+# Function that adds a subject to a specific curriculum.
+# -------------------------------------------------------------------------------------------------------------------
 def add_subject_to_curriculum():
     result = {
         "success": False,
@@ -896,9 +899,9 @@ def add_subject_to_curriculum():
 
 @app.route('/curriculums', methods=["POST", "GET"])
 @cross_origin()
-#-------------------------------------------------------------------------------------------------------------------
-#Function that shows all curriculms.
-#-------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
+# Function that shows all curriculums.
+# -------------------------------------------------------------------------------------------------------------------
 def curriculums():
     result = {
         "success": True,
@@ -917,9 +920,9 @@ def curriculums():
 
 @app.route('/subjects_in_curriculum', methods=["POST", "GET"])
 @cross_origin()
-#-------------------------------------------------------------------------------------------------------------------
-#Function that shows all the subjects in a specific curriculum.
-#-------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
+# Function that shows all the subjects in a specific curriculum.
+# -------------------------------------------------------------------------------------------------------------------
 def subjects_in_curriculum():
     result = {
         "success": False,
@@ -949,9 +952,9 @@ def subjects_in_curriculum():
 
 @app.route('/subjects_in_all_curriculums', methods=["POST", "GET"])
 @cross_origin()
-#------------------------------------------------------------------------------------------------------------------
-#Function that shows all subjects in all curriculums.
-#-------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------
+# Function that shows all subjects in all curriculums.
+# -------------------------------------------------------------------------------------------------------------------
 def subjects_in_all_curriculums():
     result = {
         "success": False,
@@ -997,9 +1000,9 @@ def subjects_in_all_curriculums():
 
 @app.route('/success_rate_stats', methods=["POST", "GET"])
 @cross_origin()
-#-------------------------------------------------------------------------------------------------------------------
-#Function that returns statistics about student's success rate in solving questions.
-#-------------------------------------------------------------------------------------------------------------------
+# -------------------------------------------------------------------------------------------------------------------
+# Function that returns statistics about student's success rate in solving questions.
+# -------------------------------------------------------------------------------------------------------------------
 def success_rate_stats():
     result = {
         "success": False,
@@ -1018,66 +1021,50 @@ def success_rate_stats():
         return jsonify(result)
 
 
-def get_question(template_id):
+def generate_similar_question(template_id):
+    # running f# executable
+    row = query_db('SELECT * FROM question_templates where template_id=?', [template_id], one=True)
+    if not row:
+        return None
+    source_problem_mml = row["template_mathml"]
+
+    similar_problem_mathml = source_problem_mml
+    try:
+        similar_problem_mathml = subprocess.check_output(
+            ["dotnet", "run", "--project", apb_exec, "--generatesimilarterm", source_problem_mml]).decode('utf-8')
+        if not similar_problem_mathml.strip():
+            similar_problem_mathml = source_problem_mml
+        print(similar_problem_mathml)
+    except subprocess.CalledProcessError as e:
+        print("algebra-problem-generator failed. " + str(e), file=sys.stderr)
+
+    latex = ""
+    try:
+        mathml = ET.fromstring(similar_problem_mathml)
+        xslt = ET.parse("web-xslt/pmml2tex/mmltex.xsl")
+        transform = ET.XSLT(xslt)
+        latex_tree = transform(mathml)
+        latex = str(latex_tree).replace('$', '').strip()
+        print(latex)
+    except ET.XSLTParseError as e:
+        print(e)
+        print(similar_problem_mathml)
+        print(latex)
+
+    problem = latex
+
+    return problem
 
 
-
-        # running f# executable
-        out = ""
-
-        source_problem_mml = "<math xmlns='http://www.w3.org/1998/Math/MathML'><mn>0</mn></math>"
-
-        rows = query_db('SELECT * FROM question_templates where template_id=?',(template_id,))
-        if not rows:
-            return None
-        random_index = random.randrange(0, len(rows))
-        source_problem_mml = rows[random_index]["template_mathml"]
-
-
-        subject_ids_row = query_db('SELECT subject_id FROM template_in_subject WHERE template_id=?',
-                                   [template_id])
-
-        subject_ids = [x["subject_id"] for x in subject_ids_row]
-        subjects_row = query_db(
-            'SELECT * FROM subjects WHERE subject_id IN ({})'.format(','.join('?' * len(subject_ids))), subject_ids)
-        subjects = [x["subject_name"] for x in subjects_row]
-
-        similar_problem_mathml = source_problem_mml
-        try:
-            similar_problem_mathml = subprocess.check_output(
-                ["dotnet", "run", "--project", apb_exec, "--generatesimilarterm", source_problem_mml]).decode('utf-8')
-            if not similar_problem_mathml.strip():
-                similar_problem_mathml = source_problem_mml
-            print(similar_problem_mathml)
-        except subprocess.CalledProcessError as e:
-            print("algebra-problem-generator failed. " + str(e), file=sys.stderr)
-
-        latex = ""
-        try:
-            mathml = ET.fromstring(similar_problem_mathml)
-            xslt = ET.parse("web-xslt/pmml2tex/mmltex.xsl")
-            transform = ET.XSLT(xslt)
-            latex_tree = transform(mathml)
-            latex = str(latex_tree).replace('$', '').strip()
-            print(latex)
-        except ET.XSLTParseError as e:
-            print(e)
-            print(similar_problem_mathml)
-            print(latex)
-
-        problem = latex
-
-        return problem
-#-------------------------------------------------------------------------------------------------------------------
-#Function that creates a practice session for a student.
-#-------------------------------------------------------------------------------------------------------------------
-@app.route('/create_practice_session' , methods = ["GET" , "POST"])
+# -------------------------------------------------------------------------------------------------------------------
+# Function that creates a practice session for a student.
+# -------------------------------------------------------------------------------------------------------------------
+@app.route('/create_practice_session', methods=["GET", "POST"])
 @cross_origin()
 def create_practice_session():
-    result={
-        "success":True,
-        "Error_massages":[]
-
+    result = {
+        "success": True,
+        "Error_massages": []
 
     }
     index = 0
@@ -1087,30 +1074,34 @@ def create_practice_session():
 
     student_id = data.get("student_id")
     for template_id in data.get("template_ids"):
-        question = str(get_question(template_id))
-        if question == "None":
+        question = generate_similar_question(template_id)
+        correct_solutions = get_wolfram_solutions(question)
+        if question is None:
             result["success"] = False
             return jsonify(result)
-        try:
 
-         execute_query_db('INSERT INTO practice_session_questions VALUES (?,?,?,?,?)',(practice_id,template_id,question,index,student_solution_id))
+        try:
+            execute_query_db('INSERT INTO student_solutions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                             (student_solution_id, student_id, practice_id, template_id, question, None, None,
+                              correct_solutions,
+                              None, None, None, None, None))
+            execute_query_db('INSERT INTO practice_session_questions VALUES (?,?,?,?,?, ?)',
+                             (practice_id, template_id, question, index, student_solution_id, correct_solutions))
 
         except sqlite3.Error as e:
-           result["Error_massages"].append(e.args[0])
-           return jsonify(result)
+            result["Error_massages"].append(e.args[0])
+            return jsonify(result)
 
-        index=index+1
+        index += 1
 
     try:
         execute_query_db('INSERT INTO practice_sessions VALUES (?,?,?,?)',
-                         (practice_id, student_id, datetime.datetime.utcnow().isoformat(),index))
+                         (practice_id, student_id, datetime.datetime.utcnow().isoformat(), index))
     except sqlite3.Error as e:
         result["Error_massages"].append(e.args[0])
         return jsonify(result)
 
-
     return jsonify(result)
-
 
 
 if __name__ == '__main__':
