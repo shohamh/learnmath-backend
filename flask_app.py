@@ -580,10 +580,10 @@ def is_final_answer_form(answer):
 
 @app.route("/check_solution", methods=["POST"])
 @cross_origin()
-# ---------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # This function checks the student answer for the question.
 # This function gets the question,the subject of the question and the students solutions.
-# ---------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def check_solution():
     result = {
         "success": True,
@@ -1103,6 +1103,113 @@ def create_practice_session():
 
     return jsonify(result)
 
+#-----------------------------------------------------------------------------------------------------------------------
+#Inner function that gets a template_id and returns subject_name.
+#-----------------------------------------------------------------------------------------------------------------------
+def get_subject_from_template(template_id):
+
+    subject_id = query_db('SELECT subject_id FROM template_in_subject WHERE template_id=?',[template_id])
+    if not subject_id:
+        return None
+
+    subject_name = query_db('SELECT subject_name FROM subjects WHERE subject_id=?' , [subject_id])
+
+    if not subject_name:
+        return None
+
+    return subject_name
+
+#-----------------------------------------------------------------------------------------------------------------------
+#Inner function that gets a subject_id and returns curriculum_name.
+#-----------------------------------------------------------------------------------------------------------------------
+def get_curriculum_from_subject(subject_id):
+    curriculum_id = query_db('SELECT curriculum_id FROM subject_in_curriculum WHERE subject_id=?' , [subject_id])
+    if not curriculum_id:
+        return None
+    curriculum_name = query_db('SELECT curriculum_name FROM curriculums WHERE curriculum_id=?' , [curriculum_id])
+    if not curriculum_name:
+        return None
+
+    return curriculum_name
+
+#-----------------------------------------------------------------------------------------------------------------------
+#Inner function that gets subject_name and returns subject_id.
+#-----------------------------------------------------------------------------------------------------------------------
+def get_subject_id_from_subject_name(subject_name):
+    subject_id = query_db('SELECT subject_id FROM subjects WHERE subject_name = ?' , [subject_name])
+    if not subject_id:
+        return None
+
+    return subject_id
+
+
+@app.route('/get_practice_session_questions' , methods=["GET" , "POST"])
+@cross_origin()
+#-----------------------------------------------------------------------------------------------------------------------
+#Function that returns a list of questions for a practice session.
+#-----------------------------------------------------------------------------------------------------------------------
+def get_practice_session_questions():
+    result = {
+        "success": True,
+        "error_massages": [],
+        "questions": [],
+        "subjects": [],
+        "curriculum": ""
+
+    }
+    data = request.get_json(force=True)
+    sid = data.get("sid")
+    user = user_from_sid(sid)
+
+    if not sid:
+        result["success"] = False
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
+
+    if not user:
+        result["success"] = False
+        result["error_messages"].append("Invalid session_id.")
+        return jsonify(result)
+
+    row = query_db('SELECT * FROM practice_sessions WHERE student_id=? AND time_created = max(time_created)' , [user["user_id"]] , one=True)
+
+    if not row:
+        result["success"] = False
+        result["error_massages"].append("Sorry, there is no practice session for this user...")
+        return jsonify(result)
+
+    questions = query_db('SELECT * FROM practice_session_questions WHERE practice_id=?' , [row["practice_id"]])
+    if not questions:
+        result["success"] = False
+        result["error_massages"].append("")
+        return jsonify(result)
+
+    for question in questions["question_mathml"]:
+        result["questions"].append(question)
+
+    i = 0
+
+    for template_id in questions["template_id"]:
+        subject = get_subject_from_template(template_id)
+        if str(subject) == "None":
+            result["subjects"].append("subject is not defined...")
+
+        result["subjects"].append(str(subject))
+
+        if i == 0:
+            subid = get_subject_id_from_subject_name(str(subject))
+            if str(subid) == "None":
+                result["error_massages"].append("subject doesn't exist...")
+                return jsonify(result)
+            curriculum_name = get_curriculum_from_subject(subid)
+            if str(curriculum_name) == "None":
+                result["curriculum"] = "curriculum doesn't exist..."
+                return jsonify(result)
+
+            result["curriculum"] = str(curriculum_name)
+            i += 1
+
+    return jsonify(result)
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080, debug=True, ssl_context=context)
