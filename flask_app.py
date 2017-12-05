@@ -71,7 +71,7 @@ def query_db(query, args=(), one=False):
 
 
 # ----------------------------------------------------------------------------------------------------------------------
-# Function that executes a query that changes the db and commits (doesn't return anything, TODO: maybe it should?).
+# Function that executes a query that changes the db and commits (doesn't return anything)
 # ----------------------------------------------------------------------------------------------------------------------
 def execute_query_db(query, args=()):
     db = get_db()
@@ -1021,7 +1021,7 @@ def success_rate_stats():
         return jsonify(result)
 
 #-----------------------------------------------------------------------------------------------------------------------
-#
+#Inner function that gets a template_id and generates similar question from it by using F# code.
 #-----------------------------------------------------------------------------------------------------------------------
 def generate_similar_question(template_id):
     # running f# executable
