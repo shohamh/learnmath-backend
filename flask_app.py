@@ -30,9 +30,9 @@ app = Flask(__name__)
 CORS(app)
 
 
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that prepers the DataBase in order to execute a query.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_db():
     db = getattr(_app_ctx_stack.top, '_database', None)
     if db is None:
@@ -42,9 +42,9 @@ def get_db():
     return db
 
 
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that closes a connection to DataBase.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 @app.teardown_appcontext
 def close_connection(exception):
     db = getattr(_app_ctx_stack.top, '_database', None)
@@ -52,17 +52,17 @@ def close_connection(exception):
         db.close()
 
 
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that convert the result of a query into a dictionary.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def make_dicts(cursor, row):
     return dict((cursor.description[idx][0], value)
                 for idx, value in enumerate(row))
 
 
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that executes a query and returns the result(might be empty).
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def query_db(query, args=(), one=False):
     cur = get_db().execute(query, args)
     rv = cur.fetchall()
@@ -70,19 +70,19 @@ def query_db(query, args=(), one=False):
     return (rv[0] if rv else None) if one else rv
 
 
-# -----------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that executes a query that changes the db and commits (doesn't return anything, TODO: maybe it should?).
-# -----------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def execute_query_db(query, args=()):
     db = get_db()
     db.execute(query, args)
     db.commit()
 
 
-# --------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that checks the validity of an email.
 # This function gets an email string as an input and returns a boolean value.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def is_email_valid(email):
     email_regex = re.compile(r"\w+[.|\w]\w+@\w+[.]\w+[.|\w+]\w+")
     if not email or not email_regex.match(email):
@@ -90,10 +90,10 @@ def is_email_valid(email):
     return True
 
 
-# --------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that checks if an email is unique.
 # This function gets an email string as an input,and returns a boolean value.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def is_unique_email(email):
     cur = query_db('SELECT username FROM users WHERE email=?', (email,))
     if not cur:
@@ -104,9 +104,9 @@ def is_unique_email(email):
 
 @app.route('/all_users', methods=["POST", "GET"])
 @cross_origin()
-# ---------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that shows all users
-# --------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def all_users():
     result = "<html><body><table border=\"1\">"
     result += "<tr><th>user_id</th><th>username</th><th>password</th><th>salt</th><th>email</th><th>registration_date</th><th>last_login_date</th></tr>"
@@ -123,9 +123,9 @@ def all_users():
 
 @app.route('/all_sessions', methods=["POST", "GET"])
 @cross_origin()
-# --------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that shows all user sessions.
-# --------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def all_sessions():
     result = "<html><body><table border=\"1\">"
     result += "<tr><th>user_id</th><th>session_key</th><th>last_login</th><th>max_session_length</th></tr>"
@@ -142,9 +142,9 @@ def all_sessions():
 
 @app.route('/all_student_solutions', methods=["POST", "GET"])
 @cross_origin()
-# --------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that shows all of students solutions.
-# --------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def all_student_solutions():
     result = "<html><body><table border=\"1\">"
     result += "<tr><th>user_id</th><th>question_id</th><th>solution_time</th><th>answer</th><th>correct_answer</th><th>datetime</th></tr>"
@@ -161,19 +161,19 @@ def all_student_solutions():
 
 @app.route('/')
 @cross_origin()
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Server's home page.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def homepage():
     return '<html><body><h2 color="green">LearnMath backend server</h2></body></html>'
 
 
 @app.route('/register', methods=["POST", "GET"])
 @cross_origin()
-# ------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that adds a new user to the system.
 # This function returns an object that shows wheter the user succeeded in registration or not.
-# ------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def register():
     result = {
         "success": False,
@@ -217,10 +217,10 @@ def register():
 
 @app.route('/login', methods=["POST", "GET"])
 @cross_origin()
-# ------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that checks if the username and password are existed in the database.
 # This function returns an object that shows wheter the user exist or not.
-# ------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def login():
     result = {
         "success": False,
@@ -268,9 +268,9 @@ def login():
 
 @app.route('/student_solution', methods=["GET", "POST"])
 @cross_origin()
-# ------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that saves the student's answer for a question,including the time and the date.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def student_solution():
     result = {
         "success": False,
@@ -303,9 +303,9 @@ def student_solution():
 
 @app.route('/question', methods=["POST", "GET"])
 @cross_origin()
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that returns a question for the user(student).
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def question():
     result = {
         "success": False,
@@ -395,9 +395,9 @@ def question():
 
 @app.route('/add_question', methods=["POST", "GET"])
 @cross_origin()
-# ----------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # This function adds a question to the templates stock.
-# ----------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def add_question():
     result = {
         "success": False,
@@ -446,9 +446,9 @@ def add_question():
     return jsonify(result)
 
 
-# ----------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Inner function that converts dictionary representation to xml format.
-# ----------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def dicttoxml(dict):
     res = xmltodict.unparse(dict)
@@ -458,9 +458,9 @@ def dicttoxml(dict):
     return res
 
 
-# --------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Inner function that returns solution/s for a question.
-# --------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 
 def get_wolfram_solutions(input, mathml=True, rerun_mathml=True):
     waeo = wap.WolframAlphaEngine(wa_appid, wa_server)
@@ -538,9 +538,9 @@ def get_wolfram_solutions(input, mathml=True, rerun_mathml=True):
     return wa_solutions
 
 
-# --------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Inner function that checks if student's solution is correct or not.
-# --------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def check_solutions_equality(solution1, solution2):
     try:
         out = subprocess.check_output(
@@ -558,9 +558,9 @@ def check_solutions_equality(solution1, solution2):
         print("algebra-problem-generator failed. " + str(e), file=sys.stderr)
 
 
-# ------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Inner function that checks if student's solution is in final form like x=number.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def is_final_answer_form(answer):
     try:
         out = subprocess.check_output(
@@ -699,9 +699,9 @@ def check_solution():
 
 @app.route("/get_feedback", methods=["GET", "POST"])
 @cross_origin()
-# ------------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # This function returns number of questions that were given for the student,number of mistakes,number of correct answers
-# ------------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_feedback():
     result = {
         "success": False,
@@ -752,9 +752,9 @@ def get_feedback():
     return jsonify(result)
 
 
-# --------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Inner function that gets as a parameter session id and returns all user properties.
-# --------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def user_from_sid(sid):
     row = query_db('SELECT user_id FROM sessions WHERE session_key=?', [sid], one=True)
     if not row:
@@ -768,9 +768,9 @@ def user_from_sid(sid):
 
 @app.route('/add_subject', methods=["POST", "GET"])
 @cross_origin()
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that adds a subject to subjects table.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def add_subject():
     result = {
         "success": False,
@@ -807,9 +807,9 @@ def add_subject():
 
 @app.route('/add_curriculum', methods=["POST", "GET"])
 @cross_origin()
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that adds a new curriculum to curriculums table.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def add_curriculum():
     result = {
         "success": False,
@@ -848,9 +848,9 @@ def add_curriculum():
 
 @app.route('/add_subject_to_curriculum', methods=["POST", "GET"])
 @cross_origin()
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that adds a subject to a specific curriculum.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def add_subject_to_curriculum():
     result = {
         "success": False,
@@ -899,9 +899,9 @@ def add_subject_to_curriculum():
 
 @app.route('/curriculums', methods=["POST", "GET"])
 @cross_origin()
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that shows all curriculums.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def curriculums():
     result = {
         "success": True,
@@ -920,9 +920,9 @@ def curriculums():
 
 @app.route('/subjects_in_curriculum', methods=["POST", "GET"])
 @cross_origin()
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that shows all the subjects in a specific curriculum.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def subjects_in_curriculum():
     result = {
         "success": False,
@@ -952,9 +952,9 @@ def subjects_in_curriculum():
 
 @app.route('/subjects_in_all_curriculums', methods=["POST", "GET"])
 @cross_origin()
-# ------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that shows all subjects in all curriculums.
-# -------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def subjects_in_all_curriculums():
     result = {
         "success": False,
@@ -1020,7 +1020,9 @@ def success_rate_stats():
         result["error_messages"].append("Invalid session_id.")
         return jsonify(result)
 
-
+#-----------------------------------------------------------------------------------------------------------------------
+#
+#-----------------------------------------------------------------------------------------------------------------------
 def generate_similar_question(template_id):
     # running f# executable
     row = query_db('SELECT * FROM question_templates where template_id=?', [template_id], one=True)
@@ -1144,6 +1146,8 @@ def get_subject_id_from_subject_name(subject_name):
     return subject_id
 
 
+
+
 @app.route('/get_practice_session_questions' , methods=["GET" , "POST"])
 @cross_origin()
 #-----------------------------------------------------------------------------------------------------------------------
@@ -1172,7 +1176,7 @@ def get_practice_session_questions():
         result["error_messages"].append("Invalid session_id.")
         return jsonify(result)
 
-    row = query_db('SELECT * FROM practice_sessions WHERE student_id=? AND time_created = max(time_created)' , [user["user_id"]] , one=True)
+    row = query_db('SELECT practice_id,student_id FROM practice_sessions WHERE student_id=? AND time_created IN (SELECT max(time_created) FROM practice_sessions)', [user["user_id"]] , one=True)
 
     if not row:
         result["success"] = False
@@ -1211,6 +1215,164 @@ def get_practice_session_questions():
             i += 1
 
     return jsonify(result)
+
+
+#-----------------------------------------------------------------------------------------------------------------------
+#Inner function that gets a student_id and return all subjects in student solutions table.
+#-----------------------------------------------------------------------------------------------------------------------
+def get_subjects_from_student_id(student_id):
+
+ subjects = []
+ row = query_db('SELECT Template_id FROM student_solutions WHERE student_id=?' , [student_id])
+ if row:
+  for template_id in row["template_id"]:
+     subject = get_subject_from_template(template_id)
+     if str(subject) != "None":
+         subjects.append(subject)
+
+ return subjects
+
+
+@app.route('/get_wrong_right_stats' ,methods = ["GET" , "POST"])
+@cross_origin()
+#-----------------------------------------------------------------------------------------------------------------------
+#Function that gets a session key and returns correct and wrong counters to each subject in question the student solved.
+#-----------------------------------------------------------------------------------------------------------------------
+def get_wrong_right_stats():
+
+ result = {
+    "success": True,
+    "error_messages": [],
+     "wrong_answers": [],
+     "correct_answers": []
+}
+ data = request.get_json(force = True)
+ sid = data.get("sid")
+ user = user_from_sid(sid)
+ if not sid:
+     result["success"] = False
+     result["error_messages"].append("No session id given.")
+     return jsonify(result)
+
+ if not user:
+     result["success"] = False
+     result["error_messages"].append("Invalid session_id.")
+     return jsonify(result)
+
+ rows = query_db('SELECT * FROM student_solutions WHERE student_id=?', [user["user_id"]])
+ subjects = get_subjects_from_student_id(user["user_id"])
+ if len(subjects)>0:
+     for subject in subjects:
+        correct_count = 0
+        wrong_count = 0
+        for row in rows["solution_id"]:
+             if str(get_subject_from_template(row["template_id"])) != "None":
+                 for x in get_subject_from_template(row["template_id"]):
+                     if str(x) == str(subject):
+
+                       if str((row["is_correct"])) == "1":
+                         correct_count += 1
+                       else:
+                         wrong_count += 1
+          #TODO you can convert to a dictiionary representation
+        result["wrong_answers"].append("Wrong answers counter in subject:" + str(subject) + "is:" + str(wrong_count))
+        result["correct_answers"].append("Correct answers counter in subject:" + str(subject) + "is:" + str(correct_count))
+
+ return jsonify(result)
+
+#-----------------------------------------------------------------------------------------------------------------------
+#Inner function that gets a student_name and returns the number of questions that were given to him.
+#-----------------------------------------------------------------------------------------------------------------------
+def get_questions_number_from_student_name(student_name):
+    student_id = query_db('SELECT user_id FROM users WHERE username=?' ,[student_name])
+    if not student_id:
+        return None
+    number_of_questions = query_db('SELECT count(distinct solution_id) FROM student_solutions WHERE student_id=? GROUP BY student_id' ,[student_id])
+    return number_of_questions
+#-----------------------------------------------------------------------------------------------------------------------
+#Inner function that gets a studen_name and returns the number of his correct answers.
+#-----------------------------------------------------------------------------------------------------------------------
+def get_correct_answers_count_from_student_name(student_name):
+    correct_counter = 0
+    student_id = query_db('SELECT user_id FROM users WHERE username=?' ,[student_name])
+    if not student_id:
+        return None
+    rows = query_db('SELECT * FROM student_solutions WHERE student_id=?' , [student_id])
+    for row in rows["is_correct"]:
+        if(str(row) == "1"):
+            correct_counter += 1
+
+    return correct_counter
+
+#-----------------------------------------------------------------------------------------------------------------------
+#Inner function that gets a student_name and returns the his average solution time.
+#-----------------------------------------------------------------------------------------------------------------------
+def get_avg_solution_time(student_name):
+    correct_counter = 0
+    student_id = query_db('SELECT user_id FROM users WHERE username=?' ,[student_name])
+    if not student_id:
+        return None
+
+    solutions_time =  query_db('SELECT SUM(solution_time) FROM student_solutions WHERE is_correct = "1" AND student_id=?' , [student_id])
+    number_correct_questions = get_correct_answers_count_from_student_name(student_name)
+    if str(number_correct_questions) != "None":
+        avg_solution_time = (solutions_time*60)/number_correct_questions
+        return avg_solution_time
+
+    return None
+
+@app.route('/get_success_percentage_avg_time_stats' , methods= ["GET" , "POST"])
+@cross_origin()
+#-----------------------------------------------------------------------------------------------------------------------
+#Function that gets a student_name and returns his success rate and his average solving time.
+#-----------------------------------------------------------------------------------------------------------------------
+def get_success_percentage_avg_time_stats():
+    result = {
+       "success": True,
+        "error_messages": [],
+        "success_percentage": "",
+        "average_solving_time": ""
+
+    }
+    data= request.get_json(force = True)
+    student_name = data.get("student_name")
+    if student_name:
+     questions_number = get_questions_number_from_student_name(student_name)
+     if str(questions_number) == "None":
+        result["success"] = False
+        result["error_messages"].append("There is no such username...")
+        return jsonify(result)
+
+     correct_answers = get_correct_answers_count_from_student_name(student_name)
+     number_of_questions = get_questions_number_from_student_name(student_name)
+     avg_solution_time = get_avg_solution_time(student_name)
+
+     if str(correct_answers) == "None" or str(number_of_questions) == "None" or str(avg_solution_time) == "None":
+        result["success"] = False
+        result["error_messages"].append("There is no such username...")
+        return jsonify(result)
+
+     result["success_percentage"] = str(correct_answers/number_of_questions)
+     result["average_solving_time"] = str(avg_solution_time)
+
+     return jsonify(result)
+
+@app.route('/get_third_stats' , methods= ["GET" , "POST"])
+@cross_origin()
+#-----------------------------------------------------------------------------------------------------------------------
+#
+#-----------------------------------------------------------------------------------------------------------------------
+def get_third_stats():
+    result ={
+        "success": True,
+        "error_messages": []
+
+
+
+    }
+    data = request.get_json(force=True)
+
+
 
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=8080, debug=True, ssl_context=context)
