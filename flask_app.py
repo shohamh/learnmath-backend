@@ -266,41 +266,6 @@ def login():
     return jsonify(result)
 
 
-@app.route('/student_solution', methods=["GET", "POST"])
-@cross_origin()
-# ----------------------------------------------------------------------------------------------------------------------
-# Function that saves the student's answer for a question,including the time and the date.
-# ----------------------------------------------------------------------------------------------------------------------
-def student_solution():
-    result = {
-        "success": False,
-        "error_messages": []
-    }
-
-    data = request.get_json(force=True)
-    user_id, question_id, answer, correct_answer, solution_time = data.get("user_id"), data.get("question_id"), \
-                                                                  data.get("answer"), data.get("correct_answer"), \
-                                                                  data.get("solution_time")
-    date_time = datetime.datetime.utcnow().isoformat()
-
-    try:
-        execute_query_db('INSERT INTO student_solutions VALUES(?,?,?,?,?,?)',
-                         (user_id, question_id, solution_time, answer, correct_answer, date_time))
-    except sqlite3.Error as e:
-        # TO DO: probably not good with new primary key tuple
-        if e.args[0] == "UNIQUE constraint failed: student_solutions.user_id, student_solutions.question_id":
-            result["error_messages"].append("The user already had this question.")
-
-        else:
-            result["error_messages"].append(e.args[0])
-
-        return jsonify(result)
-
-    result["success"] = True
-
-    return jsonify(result)
-
-
 @app.route('/question', methods=["POST", "GET"])
 @cross_origin()
 # ----------------------------------------------------------------------------------------------------------------------
@@ -370,7 +335,7 @@ def question():
     latex = ""
     try:
         mathml = ET.fromstring(similar_problem_mathml)
-        xslt = ET.parse("web-xslt/pmml2tex/mmltex.xsl")
+        xslt = ET.parse("pmml2tex/mmltex.xsl")
         transform = ET.XSLT(xslt)
         latex_tree = transform(mathml)
         latex = str(latex_tree).replace('$', '').strip()
@@ -578,6 +543,16 @@ def is_final_answer_form(answer):
         print("algebra-problem-generator failed. " + str(e), file=sys.stderr)
 
 
+def get_student_practice_id(student_id):
+    row = query_db(
+        "SELECT practice_id FROM practice_sessions WHERE student_id=? AND time_created = (SELECT min(time_created) FROM practice_sessions)",
+        [student_id], one=True)
+    if not row:
+        return None
+
+    return row["practice_id"]
+
+
 @app.route("/check_solution", methods=["POST"])
 @cross_origin()
 # ----------------------------------------------------------------------------------------------------------------------
@@ -686,10 +661,12 @@ def check_solution():
     mistake_step_number = None
     import datetime
     datetime = datetime.datetime.utcnow().isoformat()
+    practice_id = get_student_practice_id(student_id)
     try:
-        execute_query_db("INSERT INTO student_solutions VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                         [student_id, template_id, question, solution_time, str(student_solutions), str(wa_solutions),
-                          int(result["correct"]), step_by_step_data, mistake_type, mistake_step_number, datetime])
+        execute_query_db(
+            "UPDATE student_solutions SET solution_time=?, final_answer=?, is_correct=?, step_by_step_data=?, mistake_type=?, mistake_step_number, datetime=? WHERE practice_id=? AND student_id=? AND template_id=?",
+            [solution_time, student_solutions, int(result["correct"]) if type(result["correct"]) is not None else None,
+             step_by_step_data, mistake_type, mistake_step_number, datetime] + [practice_id, student_id, template_id])
     except sqlite3.Error as e:
         result["error_messages"].append(e.args[0])
         return jsonify(result)
@@ -1020,9 +997,10 @@ def success_rate_stats():
         result["error_messages"].append("Invalid session_id.")
         return jsonify(result)
 
-#-----------------------------------------------------------------------------------------------------------------------
-#Inner function that gets a template_id and generates similar question from it by using F# code.
-#-----------------------------------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------------------------------
+# Inner function that gets a template_id and generates similar question from it by using F# code.
+# -----------------------------------------------------------------------------------------------------------------------
 def generate_similar_question(template_id):
     # running f# executable
     row = query_db('SELECT * FROM question_templates where template_id=?', [template_id], one=True)
@@ -1043,7 +1021,7 @@ def generate_similar_question(template_id):
     latex = ""
     try:
         mathml = ET.fromstring(similar_problem_mathml)
-        xslt = ET.parse("web-xslt/pmml2tex/mmltex.xsl")
+        xslt = ET.parse("pmml2tex/mmltex.xsl")
         transform = ET.XSLT(xslt)
         latex_tree = transform(mathml)
         latex = str(latex_tree).replace('$', '').strip()
@@ -1066,93 +1044,154 @@ def generate_similar_question(template_id):
 def create_practice_session():
     result = {
         "success": True,
-        "Error_messages": []
+        "error_messages": []
 
     }
     index = 0
     practice_id = str(uuid.uuid4())
-    student_solution_id = str(uuid.uuid4())
     data = request.get_json(force=True)
 
     student_id = data.get("student_id")
-    if data.get("template_ids") is not None:
-     for template_id in data.get("template_ids"):
-        question = generate_similar_question(template_id)
-        correct_solutions = get_wolfram_solutions(question)
-        if question is None:
+    template_ids = data.get("template_ids")
+    question_count = data.get("question_count", 10)
+    if not template_ids:
+        subjects = data.get("subjects")
+        if not data.get("subjects"):
             result["success"] = False
+            result["error_messages"].append("No subjects given to generate practice session for.")
             return jsonify(result)
+        subjects_row = query_db(
+            'SELECT * FROM subjects WHERE subject_name IN ({})'.format(','.join('?' * len(subjects))), subjects)
+        subject_ids = [x["subject_id"] for x in subjects_row]
+        template_ids_row = query_db(
+            "select template_id, count(subject_id) FROM (select * FROM template_in_subject WHERE subject_id IN ({})) GROUP BY template_id order by (count(subject_id)) DESC LIMIT ?".format(
+                ','.join('?' * len(subject_ids))), subject_ids + [question_count])
+        if not template_ids_row:
+            result["success"] = False
+            result["error_messages"].append("No question templates for the subjects you chose.")
+            return jsonify(result)
+        template_ids = [x["template_id"] for x in template_ids_row]
+
+    original_template_ids = template_ids.copy()
+
+    while len(template_ids) < question_count:
+        index_to_duplicate = random.randrange(0, len(original_template_ids))
+        template_ids.append(original_template_ids[index_to_duplicate])
+
+    template_ids = template_ids[:question_count]
+
+    if student_id is None:
+        row = query_db("SELECT user_id FROM users")
+        student_ids = [x["user_id"] for x in row]
+        for student_id in student_ids:
+
+            for template_id in template_ids:
+                question = generate_similar_question(template_id)
+                correct_solutions = get_wolfram_solutions(question)
+                student_solution_id = str(uuid.uuid4())
+                if question is None:
+                    result["success"] = False
+                    return jsonify(result)
+
+                try:
+                    execute_query_db('INSERT INTO student_solutions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                                     (student_solution_id, student_id, practice_id, template_id, question, None, None,
+                                      str(correct_solutions),
+                                      None, None, None, None, None))
+                    execute_query_db('INSERT INTO practice_session_questions VALUES (?,?,?,?,?, ?)',
+                                     (
+                                     practice_id, template_id, question, index, student_solution_id, str(correct_solutions)))
+
+                except sqlite3.Error as e:
+                    result["error_messages"].append(e.args[0])
+                    return jsonify(result)
+
+                index += 1
+            try:
+                execute_query_db('INSERT INTO practice_sessions VALUES (?,?,?,?)',
+                                 (practice_id, student_id, datetime.datetime.utcnow().isoformat(), index))
+            except sqlite3.Error as e:
+                result["error_messages"].append(e.args[0])
+                return jsonify(result)
+    else:
+        for template_id in template_ids:
+            question = generate_similar_question(template_id)
+            correct_solutions = get_wolfram_solutions(question)
+            if question is None:
+                result["success"] = False
+                return jsonify(result)
+
+            try:
+                execute_query_db('INSERT INTO student_solutions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                                 (student_solution_id, student_id, practice_id, template_id, question, None, None,
+                                  correct_solutions,
+                                  None, None, None, None, None))
+                execute_query_db('INSERT INTO practice_session_questions VALUES (?,?,?,?,?, ?)',
+                                 (
+                                     practice_id, template_id, question, index, student_solution_id, correct_solutions))
+
+            except sqlite3.Error as e:
+                result["error_messages"].append(e.args[0])
+                return jsonify(result)
+
+            index += 1
 
         try:
-            execute_query_db('INSERT INTO student_solutions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                             (student_solution_id, student_id, practice_id, template_id, question, None, None,
-                              correct_solutions,
-                              None, None, None, None, None))
-            execute_query_db('INSERT INTO practice_session_questions VALUES (?,?,?,?,?, ?)',
-                             (practice_id, template_id, question, index, student_solution_id, correct_solutions))
-
+            execute_query_db('INSERT INTO practice_sessions VALUES (?,?,?,?)',
+                             (practice_id, student_id, datetime.datetime.utcnow().isoformat(), index))
         except sqlite3.Error as e:
-            result["Error_messages"].append(e.args[0])
+            result["error_messages"].append(e.args[0])
             return jsonify(result)
-
-        index += 1
-
-    try:
-        execute_query_db('INSERT INTO practice_sessions VALUES (?,?,?,?)',
-                         (practice_id, student_id, datetime.datetime.utcnow().isoformat(), index))
-    except sqlite3.Error as e:
-        result["Error_messages"].append(e.args[0])
-        return jsonify(result)
 
     return jsonify(result)
 
-#-----------------------------------------------------------------------------------------------------------------------
-#Inner function that gets a template_id and returns subject_name.
-#-----------------------------------------------------------------------------------------------------------------------
-def get_subject_from_template(template_id):
 
-    subject_id = query_db('SELECT subject_id FROM template_in_subject WHERE template_id=?',[template_id])
+# -----------------------------------------------------------------------------------------------------------------------
+# Inner function that gets a template_id and returns subject_name.
+# -----------------------------------------------------------------------------------------------------------------------
+def get_subject_from_template(template_id):
+    subject_id = query_db('SELECT subject_id FROM template_in_subject WHERE template_id=?', [template_id])
     if not subject_id:
         return None
 
-    subject_name = query_db('SELECT subject_name FROM subjects WHERE subject_id=?' , [subject_id])
+    subject_name = query_db('SELECT subject_name FROM subjects WHERE subject_id=?', [subject_id])
 
     if not subject_name:
         return None
 
     return subject_name
 
-#-----------------------------------------------------------------------------------------------------------------------
-#Inner function that gets a subject_id and returns curriculum_name.
-#-----------------------------------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------------------------------
+# Inner function that gets a subject_id and returns curriculum_name.
+# -----------------------------------------------------------------------------------------------------------------------
 def get_curriculum_from_subject(subject_id):
-    curriculum_id = query_db('SELECT curriculum_id FROM subject_in_curriculum WHERE subject_id=?' , [subject_id])
+    curriculum_id = query_db('SELECT curriculum_id FROM subject_in_curriculum WHERE subject_id=?', [subject_id])
     if not curriculum_id:
         return None
-    curriculum_name = query_db('SELECT curriculum_name FROM curriculums WHERE curriculum_id=?' , [curriculum_id])
+    curriculum_name = query_db('SELECT curriculum_name FROM curriculums WHERE curriculum_id=?', [curriculum_id])
     if not curriculum_name:
         return None
 
     return curriculum_name
 
-#-----------------------------------------------------------------------------------------------------------------------
-#Inner function that gets subject_name and returns subject_id.
-#-----------------------------------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------------------------------
+# Inner function that gets subject_name and returns subject_id.
+# -----------------------------------------------------------------------------------------------------------------------
 def get_subject_id_from_subject_name(subject_name):
-    subject_id = query_db('SELECT subject_id FROM subjects WHERE subject_name = ?' , [subject_name])
+    subject_id = query_db('SELECT subject_id FROM subjects WHERE subject_name = ?', [subject_name])
     if not subject_id:
         return None
 
     return subject_id
 
 
-
-
-@app.route('/get_practice_session_questions' , methods=["GET" , "POST"])
+@app.route('/get_practice_session_questions', methods=["GET", "POST"])
 @cross_origin()
-#-----------------------------------------------------------------------------------------------------------------------
-#Function that returns a list of questions for a practice session.
-#-----------------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
+# Function that returns a list of questions for a practice session.
+# -----------------------------------------------------------------------------------------------------------------------
 def get_practice_session_questions():
     result = {
         "success": True,
@@ -1176,17 +1215,19 @@ def get_practice_session_questions():
         result["error_messages"].append("Invalid session_id.")
         return jsonify(result)
 
-    row = query_db('SELECT practice_id,student_id FROM practice_sessions WHERE student_id=? AND time_created IN (SELECT max(time_created) FROM practice_sessions)', [user["user_id"]] , one=True)
+    row = query_db(
+        'SELECT practice_id,student_id FROM practice_sessions WHERE student_id=? AND time_created IN (SELECT max(time_created) FROM practice_sessions)',
+        [user["user_id"]], one=True)
 
     if not row:
         result["success"] = False
-        result["error_messages"].append("Sorry, there is no practice session for this user...")
+        result["error_messages"].append("No practice sessions available for user.")
         return jsonify(result)
 
-    questions = query_db('SELECT * FROM practice_session_questions WHERE practice_id=?' , [row["practice_id"]])
+    questions = query_db('SELECT * FROM practice_session_questions WHERE practice_id=?', [row["practice_id"]])
     if not questions:
         result["success"] = False
-        result["error_messages"].append("")
+        result["error_messages"].append("No questions in practice session.")
         return jsonify(result)
 
     for question in questions["question_mathml"]:
@@ -1217,161 +1258,167 @@ def get_practice_session_questions():
     return jsonify(result)
 
 
-#-----------------------------------------------------------------------------------------------------------------------
-#Inner function that gets a student_id and return all subjects in student solutions table.
-#-----------------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
+# Inner function that gets a student_id and return all subjects in student solutions table.
+# -----------------------------------------------------------------------------------------------------------------------
 def get_subjects_from_student_id(student_id):
+    subjects = []
+    row = query_db('SELECT Template_id FROM student_solutions WHERE student_id=?', [student_id])
+    if row:
+        for template_id in row["template_id"]:
+            subject = get_subject_from_template(template_id)
+            if str(subject) != "None":
+                subjects.append(subject)
 
- subjects = []
- row = query_db('SELECT Template_id FROM student_solutions WHERE student_id=?' , [student_id])
- if row:
-  for template_id in row["template_id"]:
-     subject = get_subject_from_template(template_id)
-     if str(subject) != "None":
-         subjects.append(subject)
-
- return subjects
+    return subjects
 
 
-@app.route('/get_wrong_right_stats' ,methods = ["GET" , "POST"])
+@app.route('/get_wrong_right_stats', methods=["GET", "POST"])
 @cross_origin()
-#-----------------------------------------------------------------------------------------------------------------------
-#Function that gets a session key and returns correct and wrong counters to each subject in question the student solved.
-#-----------------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
+# Function that gets a session key and returns correct and wrong counters to each subject in question the student solved.
+# -----------------------------------------------------------------------------------------------------------------------
 def get_wrong_right_stats():
+    result = {
+        "success": True,
+        "error_messages": [],
+        "wrong_answers": [],
+        "correct_answers": []
+    }
+    data = request.get_json(force=True)
+    sid = data.get("sid")
+    user = user_from_sid(sid)
+    if not sid:
+        result["success"] = False
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
 
- result = {
-    "success": True,
-    "error_messages": [],
-     "wrong_answers": [],
-     "correct_answers": []
-}
- data = request.get_json(force = True)
- sid = data.get("sid")
- user = user_from_sid(sid)
- if not sid:
-     result["success"] = False
-     result["error_messages"].append("No session id given.")
-     return jsonify(result)
+    if not user:
+        result["success"] = False
+        result["error_messages"].append("Invalid session_id.")
+        return jsonify(result)
 
- if not user:
-     result["success"] = False
-     result["error_messages"].append("Invalid session_id.")
-     return jsonify(result)
+    rows = query_db('SELECT * FROM student_solutions WHERE student_id=?', [user["user_id"]])
+    subjects = get_subjects_from_student_id(user["user_id"])
+    if len(subjects) > 0:
+        for subject in subjects:
+            correct_count = 0
+            wrong_count = 0
+            for row in rows["solution_id"]:
+                if str(get_subject_from_template(row["template_id"])) != "None":
+                    for x in get_subject_from_template(row["template_id"]):
+                        if str(x) == str(subject):
 
- rows = query_db('SELECT * FROM student_solutions WHERE student_id=?', [user["user_id"]])
- subjects = get_subjects_from_student_id(user["user_id"])
- if len(subjects)>0:
-     for subject in subjects:
-        correct_count = 0
-        wrong_count = 0
-        for row in rows["solution_id"]:
-             if str(get_subject_from_template(row["template_id"])) != "None":
-                 for x in get_subject_from_template(row["template_id"]):
-                     if str(x) == str(subject):
+                            if str((row["is_correct"])) == "1":
+                                correct_count += 1
+                            else:
+                                wrong_count += 1
+                                # TODO you can convert to a dictiionary representation
+            result["wrong_answers"].append(
+                "Wrong answers counter in subject:" + str(subject) + "is:" + str(wrong_count))
+            result["correct_answers"].append(
+                "Correct answers counter in subject:" + str(subject) + "is:" + str(correct_count))
 
-                       if str((row["is_correct"])) == "1":
-                         correct_count += 1
-                       else:
-                         wrong_count += 1
-          #TODO you can convert to a dictiionary representation
-        result["wrong_answers"].append("Wrong answers counter in subject:" + str(subject) + "is:" + str(wrong_count))
-        result["correct_answers"].append("Correct answers counter in subject:" + str(subject) + "is:" + str(correct_count))
+    return jsonify(result)
 
- return jsonify(result)
 
-#-----------------------------------------------------------------------------------------------------------------------
-#Inner function that gets a student_name and returns the number of questions that were given to him.
-#-----------------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
+# Inner function that gets a student_name and returns the number of questions that were given to him.
+# -----------------------------------------------------------------------------------------------------------------------
 def get_questions_number_from_student_name(student_name):
-    student_id = query_db('SELECT user_id FROM users WHERE username=?' ,[student_name])
+    student_id = query_db('SELECT user_id FROM users WHERE username=?', [student_name])
     if not student_id:
         return None
-    number_of_questions = query_db('SELECT count(distinct solution_id) FROM student_solutions WHERE student_id=? GROUP BY student_id' ,[student_id])
+    number_of_questions = query_db(
+        'SELECT count(distinct solution_id) FROM student_solutions WHERE student_id=? GROUP BY student_id',
+        [student_id])
     return number_of_questions
-#-----------------------------------------------------------------------------------------------------------------------
-#Inner function that gets a studen_name and returns the number of his correct answers.
-#-----------------------------------------------------------------------------------------------------------------------
+
+
+# -----------------------------------------------------------------------------------------------------------------------
+# Inner function that gets a studen_name and returns the number of his correct answers.
+# -----------------------------------------------------------------------------------------------------------------------
 def get_correct_answers_count_from_student_name(student_name):
     correct_counter = 0
-    student_id = query_db('SELECT user_id FROM users WHERE username=?' ,[student_name])
+    student_id = query_db('SELECT user_id FROM users WHERE username=?', [student_name])
     if not student_id:
         return None
-    rows = query_db('SELECT * FROM student_solutions WHERE student_id=?' , [student_id])
+    rows = query_db('SELECT * FROM student_solutions WHERE student_id=?', [student_id])
     for row in rows["is_correct"]:
-        if(str(row) == "1"):
+        if (str(row) == "1"):
             correct_counter += 1
 
     return correct_counter
 
-#-----------------------------------------------------------------------------------------------------------------------
-#Inner function that gets a student_name and returns the his average solution time.
-#-----------------------------------------------------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------------------------------------------------
+# Inner function that gets a student_name and returns the his average solution time.
+# -----------------------------------------------------------------------------------------------------------------------
 def get_avg_solution_time(student_name):
     correct_counter = 0
-    student_id = query_db('SELECT user_id FROM users WHERE username=?' ,[student_name])
+    student_id = query_db('SELECT user_id FROM users WHERE username=?', [student_name])
     if not student_id:
         return None
 
-    solutions_time =  query_db('SELECT SUM(solution_time) FROM student_solutions WHERE is_correct = "1" AND student_id=?' , [student_id])
+    solutions_time = query_db(
+        'SELECT SUM(solution_time) FROM student_solutions WHERE is_correct = "1" AND student_id=?', [student_id])
     number_correct_questions = get_correct_answers_count_from_student_name(student_name)
     if str(number_correct_questions) != "None":
-        avg_solution_time = (solutions_time*60)/number_correct_questions
+        avg_solution_time = (solutions_time * 60) / number_correct_questions
         return avg_solution_time
 
     return None
 
-@app.route('/get_success_percentage_avg_time_stats' , methods= ["GET" , "POST"])
+
+@app.route('/get_success_percentage_avg_time_stats', methods=["GET", "POST"])
 @cross_origin()
-#-----------------------------------------------------------------------------------------------------------------------
-#Function that gets a student_name and returns his success rate and his average solving time.
-#-----------------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
+# Function that gets a student_name and returns his success rate and his average solving time.
+# -----------------------------------------------------------------------------------------------------------------------
 def get_success_percentage_avg_time_stats():
     result = {
-       "success": True,
+        "success": True,
         "error_messages": [],
         "success_percentage": "",
         "average_solving_time": ""
 
     }
-    data= request.get_json(force = True)
+    data = request.get_json(force=True)
     student_name = data.get("student_name")
     if student_name:
-     questions_number = get_questions_number_from_student_name(student_name)
-     if str(questions_number) == "None":
-        result["success"] = False
-        result["error_messages"].append("There is no such username...")
+        questions_number = get_questions_number_from_student_name(student_name)
+        if str(questions_number) == "None":
+            result["success"] = False
+            result["error_messages"].append("There is no such username...")
+            return jsonify(result)
+
+        correct_answers = get_correct_answers_count_from_student_name(student_name)
+        number_of_questions = get_questions_number_from_student_name(student_name)
+        avg_solution_time = get_avg_solution_time(student_name)
+
+        if str(correct_answers) == "None" or str(number_of_questions) == "None" or str(avg_solution_time) == "None":
+            result["success"] = False
+            result["error_messages"].append("There is no such username...")
+            return jsonify(result)
+
+        result["success_percentage"] = str(correct_answers / number_of_questions)
+        result["average_solving_time"] = str(avg_solution_time)
+
         return jsonify(result)
 
-     correct_answers = get_correct_answers_count_from_student_name(student_name)
-     number_of_questions = get_questions_number_from_student_name(student_name)
-     avg_solution_time = get_avg_solution_time(student_name)
 
-     if str(correct_answers) == "None" or str(number_of_questions) == "None" or str(avg_solution_time) == "None":
-        result["success"] = False
-        result["error_messages"].append("There is no such username...")
-        return jsonify(result)
-
-     result["success_percentage"] = str(correct_answers/number_of_questions)
-     result["average_solving_time"] = str(avg_solution_time)
-
-     return jsonify(result)
-
-@app.route('/get_third_stats' , methods= ["GET" , "POST"])
+@app.route('/get_third_stats', methods=["GET", "POST"])
 @cross_origin()
-#-----------------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
 #
-#-----------------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
 def get_third_stats():
-    result ={
+    result = {
         "success": True,
         "error_messages": []
 
-
-
     }
     data = request.get_json(force=True)
-
 
 
 if __name__ == '__main__':
