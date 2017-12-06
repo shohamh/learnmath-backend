@@ -1489,9 +1489,9 @@ def get_mistake_type_stats():
             if mistake_counter is None:
                 continue
 
-        result["result"][student_name] = {}
-        result["result"][student_name]["mistake_type"] = str(mistake)
-        result["result"][student_name]["mistake_type_rate"] = str(mistake_counter / wrongs_counter)
+            result["result"][student_name] = {}
+            result["result"][student_name]["mistake_type"] = str(mistake)
+            result["result"][student_name]["mistake_type_rate"] = str(mistake_counter / wrongs_counter)
 
     return jsonify(result)
 
