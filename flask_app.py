@@ -661,7 +661,7 @@ def check_solution():
     #             result["error_messages"].append(e.args[0])
     #             return jsonify(result)
     template_id = ""
-    solution_time = 100
+    solution_time = 100 #TODO change this number
     step_by_step_data = ""
     mistake_type = None
     mistake_step_number = None
@@ -1266,9 +1266,9 @@ def get_practice_session_questions():
     return jsonify(result)
 
 
-# -----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Inner function that gets a student_id and return all subjects in student solutions table.
-# -----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_subjects_from_student_id(student_id):
     subjects = []
     row = query_db('SELECT template_id FROM student_solutions WHERE student_id=?', [student_id])
@@ -1281,9 +1281,9 @@ def get_subjects_from_student_id(student_id):
     return subjects
 
 
-# -----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Function that gets a session key and returns correct and wrong counters to each subject in question the student solved
-# -----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 @app.route('/get_wrong_right_stats', methods=["GET", "POST"])
 @cross_origin()
 def get_wrong_right_stats():
@@ -1325,9 +1325,9 @@ def get_wrong_right_stats():
     return jsonify(result)
 
 
-# -----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Inner function that gets a student_name and returns the number of questions that were given to him.
-# -----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_questions_number_from_student_name(student_name):
     student_id_row = query_db('SELECT user_id FROM users WHERE username=?', [student_name], one=True)
     if not student_id_row:
@@ -1341,9 +1341,9 @@ def get_questions_number_from_student_name(student_name):
     return number_of_questions[0]
 
 
-# -----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Inner function that gets a student_name and returns the number of his correct answers.
-# -----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_correct_answers_count_from_student_name(student_name):
     correct_counter = 0
     student_id_row = query_db('SELECT user_id FROM users WHERE username=?', [student_name], one=True)
@@ -1358,9 +1358,9 @@ def get_correct_answers_count_from_student_name(student_name):
     return correct_counter
 
 
-# -----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 # Inner function that gets a student_name and returns the his average solution time.
-# -----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
 def get_avg_solution_time(student_name):
     student_id_row = query_db('SELECT user_id FROM users WHERE username=?', [student_name], one=True)
     if not student_id_row:
@@ -1376,9 +1376,9 @@ def get_avg_solution_time(student_name):
 
 @app.route('/get_success_percentage_avg_time_stats', methods=["GET", "POST"])
 @cross_origin()
-# -----------------------------------------------------------------------------------------------------------------------
-# Function that gets a student_name and returns his success rate and his average solving time.
-# -----------------------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------------------------------------------------
+# Function that returns success percentage and average time of solution for a specific student or to all of the students.
+# ----------------------------------------------------------------------------------------------------------------------
 def get_success_percentage_avg_time_stats():
     result = {
         "success": True,
@@ -1414,18 +1414,87 @@ def get_success_percentage_avg_time_stats():
         return jsonify(result)
 
 
+# ----------------------------------------------------------------------------------------------------------------------
+# Inner function that gets a student_name and returns the number of his wrong answers.
+# ----------------------------------------------------------------------------------------------------------------------
+def get_wrong_answers_count_from_student_name(student_name):
+    wrongs_counter = 0
+    student_id_row = query_db('SELECT user_id FROM users WHERE username=?', [student_name], one=True)
+    if not student_id_row:
+        return None
+    student_id = student_id_row["user_id"]
+    rows = query_db('SELECT * FROM student_solutions WHERE student_id=?', [student_id])
+    for row in rows:
+        if row["is_correct"] == 0:
+            wrongs_counter += 1
+
+    return wrongs_counter
+
+
+#-----------------------------------------------------------------------------------------------------------------------
+#Inner function that gets a student name and returns his mistakes.
+#-----------------------------------------------------------------------------------------------------------------------
+def get_all_mistakes_from_student_name(student_name):
+    student_id_row = query_db('SELECT user_id FROM users WHERE username=?', [student_name], one=True)
+    if not student_id_row:
+        return None
+    student_id = student_id_row["user_id"]
+    mistakes = query_db('SELECT DISTINCT mistake_type FROM student_solutions WHERE student_id=?' ,[student_id])
+    if not mistakes:
+        return None
+
+    return mistakes
+
+#-----------------------------------------------------------------------------------------------------------------------
+#Inner function that gets student_name and mistake_type and returns the number of mistakes from that type the student did.
+#-----------------------------------------------------------------------------------------------------------------------
+def get_mistake_type_counter_from_student_(student_name,mistake_type):
+    student_id_row = query_db('SELECT user_id FROM users WHERE username=?', [student_name], one=True)
+    if not student_id_row:
+        return None
+    student_id = student_id_row["user_id"]
+    counter = query_db('SELECT COUNT(student_id,mistake_type) FROM student_solutions WHERE student_id=? AND mistake_type=?' ,[student_id,mistake_type])
+    if not counter:
+        return None
+    return counter
+
 @app.route('/get_mistake_type_stats', methods=["GET", "POST"])
 @cross_origin()
-# -----------------------------------------------------------------------------------------------------------------------
-#
-# -----------------------------------------------------------------------------------------------------------------------
+#------------------------------------------------------------------------------------------------------------------------
+#Function that returns mistake_type stats of a specific student or all of the students
+#------------------------------------------------------------------------------------------------------------------------
 def get_mistake_type_stats():
     result = {
         "success": True,
-        "error_messages": []
+        "error_messages": [],
+        "result": {}
 
     }
     data = request.get_json(force=True)
+    student_name = data.get("student_name")
+    if student_name:
+        student_names = [student_name]
+    else:
+        student_names_row = query_db("SELECT * FROM users")
+        student_names = [x["username"] for x in student_names_row]
+
+    for student_name in student_names:
+        wrongs_counter = get_wrong_answers_count_from_student_name(student_name)
+        student_mistakes = get_all_mistakes_from_student_name(student_name)
+        if wrongs_counter is None or student_mistakes is None:
+            continue
+
+        for mistake in student_mistakes:
+            mistake_counter = get_mistake_type_counter_from_student_(student_name,mistake)
+            if mistake_counter is None:
+                continue
+
+        result["result"][student_name] = {}
+        result["result"][student_name]["mistake_type"] = str(mistake)
+        result["result"][student_name]["mistake_type_rate"] = str(mistake_counter / wrongs_counter)
+
+    return jsonify(result)
+
 
 
 if __name__ == '__main__':
