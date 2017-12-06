@@ -481,7 +481,13 @@ def get_wolfram_solutions(input, mathml=True, rerun_mathml=True):
                         mathml = dicttoxml(actual_answer)
                         wa_solutions += get_wolfram_solutions(mathml)
                     except ValueError:
-                        if ("no solution" in x for x in actual_answer["mrow"]["mtext"]):
+                        lst = [x for x in actual_answer.get("mrow", {}).get("mtext", [])]
+                        found_no_solution = False
+                        for x in lst:
+                            if "no solution" in x:
+                                found_no_solution = True
+                                break
+                        if found_no_solution:
                             pass
                         else:
                             print("Malformed answer from Wolfram|Alpha we don't know how to handle", file=sys.stderr)
@@ -1100,7 +1106,8 @@ def create_practice_session():
                                       None, None, None, None, None))
                     execute_query_db('INSERT INTO practice_session_questions VALUES (?,?,?,?,?, ?)',
                                      (
-                                     practice_id, template_id, question, index, student_solution_id, str(correct_solutions)))
+                                         practice_id, template_id, question, index, student_solution_id,
+                                         str(correct_solutions)))
 
                 except sqlite3.Error as e:
                     result["error_messages"].append(e.args[0])
@@ -1117,6 +1124,7 @@ def create_practice_session():
         for template_id in template_ids:
             question = generate_similar_question(template_id)
             correct_solutions = get_wolfram_solutions(question)
+            student_solution_id = str(uuid.uuid4())
             if question is None:
                 result["success"] = False
                 return jsonify(result)
@@ -1124,11 +1132,11 @@ def create_practice_session():
             try:
                 execute_query_db('INSERT INTO student_solutions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
                                  (student_solution_id, student_id, practice_id, template_id, question, None, None,
-                                  correct_solutions,
+                                  str(correct_solutions),
                                   None, None, None, None, None))
                 execute_query_db('INSERT INTO practice_session_questions VALUES (?,?,?,?,?, ?)',
-                                 (
-                                     practice_id, template_id, question, index, student_solution_id, correct_solutions))
+                                 [practice_id, template_id, question, index, student_solution_id,
+                                  str(correct_solutions)])
 
             except sqlite3.Error as e:
                 result["error_messages"].append(e.args[0])
@@ -1263,27 +1271,26 @@ def get_practice_session_questions():
 # -----------------------------------------------------------------------------------------------------------------------
 def get_subjects_from_student_id(student_id):
     subjects = []
-    row = query_db('SELECT Template_id FROM student_solutions WHERE student_id=?', [student_id])
+    row = query_db('SELECT template_id FROM student_solutions WHERE student_id=?', [student_id])
     if row:
         for template_id in row["template_id"]:
             subject = get_subject_from_template(template_id)
-            if str(subject) != "None":
+            if subject is not None:
                 subjects.append(subject)
 
     return subjects
 
 
+# -----------------------------------------------------------------------------------------------------------------------
+# Function that gets a session key and returns correct and wrong counters to each subject in question the student solved
+# -----------------------------------------------------------------------------------------------------------------------
 @app.route('/get_wrong_right_stats', methods=["GET", "POST"])
 @cross_origin()
-# -----------------------------------------------------------------------------------------------------------------------
-# Function that gets a session key and returns correct and wrong counters to each subject in question the student solved.
-# -----------------------------------------------------------------------------------------------------------------------
 def get_wrong_right_stats():
     result = {
         "success": True,
         "error_messages": [],
-        "wrong_answers": [],
-        "correct_answers": []
+        "subjects": {}
     }
     data = request.get_json(force=True)
     sid = data.get("sid")
@@ -1304,20 +1311,16 @@ def get_wrong_right_stats():
         for subject in subjects:
             correct_count = 0
             wrong_count = 0
-            for row in rows["solution_id"]:
+            for row in rows:
                 if str(get_subject_from_template(row["template_id"])) != "None":
                     for x in get_subject_from_template(row["template_id"]):
                         if str(x) == str(subject):
 
-                            if str((row["is_correct"])) == "1":
+                            if row["is_correct"] == 1:
                                 correct_count += 1
                             else:
                                 wrong_count += 1
-                                # TODO you can convert to a dictiionary representation
-            result["wrong_answers"].append(
-                "Wrong answers counter in subject:" + str(subject) + "is:" + str(wrong_count))
-            result["correct_answers"].append(
-                "Correct answers counter in subject:" + str(subject) + "is:" + str(correct_count))
+            subjects[str(subject)] = {"wrong": wrong_count, "correct": correct_count}
 
     return jsonify(result)
 
@@ -1326,26 +1329,30 @@ def get_wrong_right_stats():
 # Inner function that gets a student_name and returns the number of questions that were given to him.
 # -----------------------------------------------------------------------------------------------------------------------
 def get_questions_number_from_student_name(student_name):
-    student_id = query_db('SELECT user_id FROM users WHERE username=?', [student_name])
-    if not student_id:
+    student_id_row = query_db('SELECT user_id FROM users WHERE username=?', [student_name], one=True)
+    if not student_id_row:
         return None
+    student_id = student_id_row["user_id"]
     number_of_questions = query_db(
-        'SELECT count(distinct solution_id) FROM student_solutions WHERE student_id=? GROUP BY student_id',
-        [student_id])
-    return number_of_questions
+        'SELECT count(solution_id) FROM student_solutions WHERE student_id=? GROUP BY student_id',
+        [student_id], one=True)
+    if number_of_questions is None:
+        return None
+    return number_of_questions[0]
 
 
 # -----------------------------------------------------------------------------------------------------------------------
-# Inner function that gets a studen_name and returns the number of his correct answers.
+# Inner function that gets a student_name and returns the number of his correct answers.
 # -----------------------------------------------------------------------------------------------------------------------
 def get_correct_answers_count_from_student_name(student_name):
     correct_counter = 0
-    student_id = query_db('SELECT user_id FROM users WHERE username=?', [student_name])
-    if not student_id:
+    student_id_row = query_db('SELECT user_id FROM users WHERE username=?', [student_name], one=True)
+    if not student_id_row:
         return None
+    student_id = student_id_row["user_id"]
     rows = query_db('SELECT * FROM student_solutions WHERE student_id=?', [student_id])
-    for row in rows["is_correct"]:
-        if (str(row) == "1"):
+    for row in rows:
+        if row["is_correct"] == 1:
             correct_counter += 1
 
     return correct_counter
@@ -1355,19 +1362,16 @@ def get_correct_answers_count_from_student_name(student_name):
 # Inner function that gets a student_name and returns the his average solution time.
 # -----------------------------------------------------------------------------------------------------------------------
 def get_avg_solution_time(student_name):
-    correct_counter = 0
-    student_id = query_db('SELECT user_id FROM users WHERE username=?', [student_name])
-    if not student_id:
+    student_id_row = query_db('SELECT user_id FROM users WHERE username=?', [student_name], one=True)
+    if not student_id_row:
         return None
-
+    student_id = student_id_row["user_id"]
     solutions_time = query_db(
-        'SELECT SUM(solution_time) FROM student_solutions WHERE is_correct = "1" AND student_id=?', [student_id])
-    number_correct_questions = get_correct_answers_count_from_student_name(student_name)
-    if str(number_correct_questions) != "None":
-        avg_solution_time = (solutions_time * 60) / number_correct_questions
-        return avg_solution_time
-
-    return None
+        'SELECT AVG(solution_time) FROM student_solutions WHERE is_correct = 1 AND student_id=?', [student_id],
+        one=True)
+    if not solutions_time:
+        return None
+    return solutions_time[0]
 
 
 @app.route('/get_success_percentage_avg_time_stats', methods=["GET", "POST"])
@@ -1379,40 +1383,43 @@ def get_success_percentage_avg_time_stats():
     result = {
         "success": True,
         "error_messages": [],
-        "success_percentage": "",
-        "average_solving_time": ""
-
+        "result": {}
     }
     data = request.get_json(force=True)
     student_name = data.get("student_name")
     if student_name:
+        student_names = [student_name]
+    else:
+        student_names_row = query_db("SELECT * FROM users")
+        student_names = [x["username"] for x in student_names_row]
+    for student_name in student_names:
         questions_number = get_questions_number_from_student_name(student_name)
-        if str(questions_number) == "None":
-            result["success"] = False
-            result["error_messages"].append("There is no such username...")
-            return jsonify(result)
+        if questions_number is None:
+            continue
 
         correct_answers = get_correct_answers_count_from_student_name(student_name)
         number_of_questions = get_questions_number_from_student_name(student_name)
         avg_solution_time = get_avg_solution_time(student_name)
 
-        if str(correct_answers) == "None" or str(number_of_questions) == "None" or str(avg_solution_time) == "None":
-            result["success"] = False
-            result["error_messages"].append("There is no such username...")
-            return jsonify(result)
-
-        result["success_percentage"] = str(correct_answers / number_of_questions)
-        result["average_solving_time"] = str(avg_solution_time)
+        if correct_answers is None or number_of_questions is None or avg_solution_time is None:
+            # result["success"] = False
+            # result["error_messages"].append("There is no such username...")
+            # return jsonify(result)
+            continue
+        result["result"][student_name] = {}
+        result["result"][student_name]["success_percentage"] = str(correct_answers / number_of_questions)
+        result["result"][student_name]["average_solving_time"] = str(avg_solution_time)
+    else:
 
         return jsonify(result)
 
 
-@app.route('/get_third_stats', methods=["GET", "POST"])
+@app.route('/get_mistake_type_stats', methods=["GET", "POST"])
 @cross_origin()
 # -----------------------------------------------------------------------------------------------------------------------
 #
 # -----------------------------------------------------------------------------------------------------------------------
-def get_third_stats():
+def get_mistake_type_stats():
     result = {
         "success": True,
         "error_messages": []
