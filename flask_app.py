@@ -416,6 +416,9 @@ def add_question():
 # ----------------------------------------------------------------------------------------------------------------------
 
 def dicttoxml(dict):
+    dict.pop("xmlns", None)
+    dict.pop("xmlns:mathematica", None)
+    dict.pop("mathematica:form", None)
     res = xmltodict.unparse(dict)
     xml_prefix = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n"
     if xml_prefix in res:
@@ -436,6 +439,8 @@ def get_wolfram_solutions(input, mathml=True, rerun_mathml=True):
 
     wa_solutions = []
     solution_pod_found = False
+    if jsonresult["success"] == "false":
+        return []
     for pod in jsonresult["pod"]:
         if "solution" in pod["title"].lower():
             solution_pod_found = True
@@ -551,7 +556,7 @@ def is_final_answer_form(answer):
 
 def get_student_practice_id(student_id):
     row = query_db(
-        "SELECT practice_id FROM practice_sessions WHERE student_id=? AND time_created = (SELECT min(time_created) FROM practice_sessions)",
+        'SELECT practice_id FROM practice_sessions WHERE student_id=? ORDER BY time_created DESC LIMIT 1',
         [student_id], one=True)
     if not row:
         return None
@@ -586,8 +591,21 @@ def check_solution():
     student_id = user["user_id"]
 
     student_solutions = data.get("solutions")
-    question = data.get("question")  # TODO: INSECURE FIX LATER, make question come from server&session
-    subject_names = data.get("subjects")
+    question_index = data.get("index")  # TODO: INSECURE FIX LATER, make question come from server&session
+    solution_time = data.get("time")
+    practice_id = get_student_practice_id(student_id)
+
+    question_row = query_db(
+        "SELECT * FROM practice_session_questions WHERE practice_id=? AND question_index=?",
+        [practice_id, question_index], one=True)
+    if not question_row:
+        result["success"] = False
+        result["error_messages"].append("No question found for this index and practice id.")
+        return jsonify(result)
+
+    question = question_row["question_mathml"]
+    template_id = question_row["template_id"]
+
     if isinstance(student_solutions, str):
         student_solutions = [student_solutions]
 
@@ -660,18 +678,15 @@ def check_solution():
     #         except sqlite3.Error as e:
     #             result["error_messages"].append(e.args[0])
     #             return jsonify(result)
-    template_id = ""
-    solution_time = 100
     step_by_step_data = ""
     mistake_type = None
     mistake_step_number = None
     import datetime
     datetime = datetime.datetime.utcnow().isoformat()
-    practice_id = get_student_practice_id(student_id)
     try:
         execute_query_db(
-            "UPDATE student_solutions SET solution_time=?, final_answer=?, is_correct=?, step_by_step_data=?, mistake_type=?, mistake_step_number, datetime=? WHERE practice_id=? AND student_id=? AND template_id=?",
-            [solution_time, student_solutions, int(result["correct"]) if type(result["correct"]) is not None else None,
+            "UPDATE student_solutions SET solution_time=?, final_answer=?, is_correct=?, step_by_step_data=?, mistake_type=?, mistake_step_number=?, datetime=? WHERE practice_id=? AND student_id=? AND template_id=?",
+            [solution_time, student_solutions[0], int(result["correct"]) if type(result["correct"]) is not None else None,
              step_by_step_data, mistake_type, mistake_step_number, datetime] + [practice_id, student_id, template_id])
     except sqlite3.Error as e:
         result["error_messages"].append(e.args[0])
@@ -778,7 +793,7 @@ def add_subject():
     subject_id = str(uuid.uuid4())
 
     try:
-        execute_query_db('INSERT INTO subjects VALUES(?,?)', (subject_id, subject_name))
+        execute_query_db('INSERT INTO subjects VALUES(?,?,?)', (subject_id, subject_name, 0))
     except sqlite3.Error as e:
         result["error_messages"].append(e.args[0])
         return jsonify(result)
@@ -1054,7 +1069,7 @@ def create_practice_session():
 
     }
     index = 0
-    practice_id = str(uuid.uuid4())
+
     data = request.get_json(force=True)
 
     student_id = data.get("student_id")
@@ -1086,45 +1101,19 @@ def create_practice_session():
 
     template_ids = template_ids[:question_count]
 
-    if student_id is None:
+    if student_id:
+        student_ids = [student_id]
+    else:
         row = query_db("SELECT user_id FROM users")
         student_ids = [x["user_id"] for x in row]
-        for student_id in student_ids:
-
-            for template_id in template_ids:
-                question = generate_similar_question(template_id)
-                correct_solutions = get_wolfram_solutions(question)
-                student_solution_id = str(uuid.uuid4())
-                if question is None:
-                    result["success"] = False
-                    return jsonify(result)
-
-                try:
-                    execute_query_db('INSERT INTO student_solutions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-                                     (student_solution_id, student_id, practice_id, template_id, question, None, None,
-                                      str(correct_solutions),
-                                      None, None, None, None, None))
-                    execute_query_db('INSERT INTO practice_session_questions VALUES (?,?,?,?,?, ?)',
-                                     (
-                                         practice_id, template_id, question, index, student_solution_id,
-                                         str(correct_solutions)))
-
-                except sqlite3.Error as e:
-                    result["error_messages"].append(e.args[0])
-                    return jsonify(result)
-
-                index += 1
-            try:
-                execute_query_db('INSERT INTO practice_sessions VALUES (?,?,?,?)',
-                                 (practice_id, student_id, datetime.datetime.utcnow().isoformat(), index))
-            except sqlite3.Error as e:
-                result["error_messages"].append(e.args[0])
-                return jsonify(result)
-    else:
+    for student_id in student_ids:
+        practice_id = str(uuid.uuid4())
+        index = 0
         for template_id in template_ids:
             question = generate_similar_question(template_id)
             correct_solutions = get_wolfram_solutions(question)
             student_solution_id = str(uuid.uuid4())
+
             if question is None:
                 result["success"] = False
                 return jsonify(result)
@@ -1135,39 +1124,42 @@ def create_practice_session():
                                   str(correct_solutions),
                                   None, None, None, None, None))
                 execute_query_db('INSERT INTO practice_session_questions VALUES (?,?,?,?,?, ?)',
-                                 [practice_id, template_id, question, index, student_solution_id,
-                                  str(correct_solutions)])
+                                 [
+                                     practice_id, index, template_id, question, str(correct_solutions),
+                                     student_solution_id,
+                                 ])
 
             except sqlite3.Error as e:
                 result["error_messages"].append(e.args[0])
                 return jsonify(result)
 
             index += 1
-
         try:
             execute_query_db('INSERT INTO practice_sessions VALUES (?,?,?,?)',
                              (practice_id, student_id, datetime.datetime.utcnow().isoformat(), index))
+            print("inserted practice session for" + student_id)
         except sqlite3.Error as e:
             result["error_messages"].append(e.args[0])
             return jsonify(result)
+        except Exception as e:
+            print("exception adding practice session " + str(e))
 
+    result["success"] = True
     return jsonify(result)
 
 
 # -----------------------------------------------------------------------------------------------------------------------
 # Inner function that gets a template_id and returns subject_name.
 # -----------------------------------------------------------------------------------------------------------------------
-def get_subject_from_template(template_id):
-    subject_id = query_db('SELECT subject_id FROM template_in_subject WHERE template_id=?', [template_id])
-    if not subject_id:
+def get_subjects_from_template(template_id):
+    subjects_row = query_db(
+        'SELECT template_in_subject.subject_id, subject_name FROM template_in_subject INNER JOIN subjects ON subjects.subject_id=template_in_subject.subject_id WHERE template_id=?',
+        [template_id])
+    if not subjects_row:
         return None
+    subject_names = [x["subject_name"] for x in subjects_row]
 
-    subject_name = query_db('SELECT subject_name FROM subjects WHERE subject_id=?', [subject_id])
-
-    if not subject_name:
-        return None
-
-    return subject_name
+    return subject_names
 
 
 # -----------------------------------------------------------------------------------------------------------------------
@@ -1222,47 +1214,31 @@ def get_practice_session_questions():
         result["success"] = False
         result["error_messages"].append("Invalid session_id.")
         return jsonify(result)
-
+    student_id = user["user_id"]
     row = query_db(
-        'SELECT practice_id,student_id FROM practice_sessions WHERE student_id=? AND time_created IN (SELECT max(time_created) FROM practice_sessions)',
-        [user["user_id"]], one=True)
+        'SELECT practice_id,student_id FROM practice_sessions WHERE student_id=? ORDER BY time_created DESC LIMIT 1',
+        [student_id], one=True)
 
     if not row:
         result["success"] = False
         result["error_messages"].append("No practice sessions available for user.")
         return jsonify(result)
-
-    questions = query_db('SELECT * FROM practice_session_questions WHERE practice_id=?', [row["practice_id"]])
+    practice_id = row["practice_id"]
+    questions = query_db('SELECT * FROM practice_session_questions WHERE practice_id=?', [practice_id])
     if not questions:
         result["success"] = False
         result["error_messages"].append("No questions in practice session.")
         return jsonify(result)
 
-    for question in questions["question_mathml"]:
-        result["questions"].append(question)
+    for question in questions:
+        result["questions"].append(question["question_mathml"])
 
-    i = 0
+    template_ids = [x["template_id"] for x in questions]
+    for template_id in template_ids:
+        subjects = get_subjects_from_template(template_id)
+        result["subjects"] += subjects if subjects else []
 
-    for template_id in questions["template_id"]:
-        subject = get_subject_from_template(template_id)
-        if str(subject) == "None":
-            result["subjects"].append("subject is not defined...")
-
-        result["subjects"].append(str(subject))
-
-        if i == 0:
-            subid = get_subject_id_from_subject_name(str(subject))
-            if str(subid) == "None":
-                result["error_messages"].append("subject doesn't exist...")
-                return jsonify(result)
-            curriculum_name = get_curriculum_from_subject(subid)
-            if str(curriculum_name) == "None":
-                result["curriculum"] = "curriculum doesn't exist..."
-                return jsonify(result)
-
-            result["curriculum"] = str(curriculum_name)
-            i += 1
-
+    result["subjects"] = list(set(result["subjects"]))
     return jsonify(result)
 
 
@@ -1274,7 +1250,7 @@ def get_subjects_from_student_id(student_id):
     row = query_db('SELECT template_id FROM student_solutions WHERE student_id=?', [student_id])
     if row:
         for template_id in row["template_id"]:
-            subject = get_subject_from_template(template_id)
+            subject = get_subjects_from_template(template_id)
             if subject is not None:
                 subjects.append(subject)
 
@@ -1312,15 +1288,16 @@ def get_wrong_right_stats():
             correct_count = 0
             wrong_count = 0
             for row in rows:
-                if str(get_subject_from_template(row["template_id"])) != "None":
-                    for x in get_subject_from_template(row["template_id"]):
-                        if str(x) == str(subject):
+                subjects_from_template = get_subjects_from_template(row["template_id"])
+                if subjects_from_template is not None:
+                    for x in subjects_from_template:
+                        if x == subject:
 
                             if row["is_correct"] == 1:
                                 correct_count += 1
                             else:
                                 wrong_count += 1
-            subjects[str(subject)] = {"wrong": wrong_count, "correct": correct_count}
+            subjects[subject] = {"wrong": wrong_count, "correct": correct_count}
 
     return jsonify(result)
 
@@ -1386,12 +1363,22 @@ def get_success_percentage_avg_time_stats():
         "result": {}
     }
     data = request.get_json(force=True)
-    student_name = data.get("student_name")
-    if student_name:
-        student_names = [student_name]
+    sid = data.get("sid")
+    user = user_from_sid(sid)
+
+    if not sid:
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
+    if not user:
+        result["error_messages"].append("Invalid session_id.")
+        return jsonify(result)
+    student_names = []
+    if user["role"] == "Student":
+        student_names = [user["username"]]
     else:
         student_names_row = query_db("SELECT * FROM users")
         student_names = [x["username"] for x in student_names_row]
+
     for student_name in student_names:
         questions_number = get_questions_number_from_student_name(student_name)
         if questions_number is None:
@@ -1407,8 +1394,8 @@ def get_success_percentage_avg_time_stats():
             # return jsonify(result)
             continue
         result["result"][student_name] = {}
-        result["result"][student_name]["success_percentage"] = str(correct_answers / number_of_questions)
-        result["result"][student_name]["average_solving_time"] = str(avg_solution_time)
+        result["result"][student_name]["success_percentage"] = correct_answers / number_of_questions
+        result["result"][student_name]["average_solving_time"] = avg_solution_time
     else:
 
         return jsonify(result)
