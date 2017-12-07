@@ -391,10 +391,20 @@ def add_question():
 
     template_id = str(uuid.uuid4())
     date_time = datetime.datetime.utcnow().isoformat()
+
     try:
         execute_query_db('INSERT INTO question_templates VALUES(?,?,?,?)',
                          (template_id, question_mathml, user_id, date_time))
+        inferred_subjects = infer_subjects_from_template_id(template_id)
+        for subject in inferred_subjects:
+            new_subject_id = str(uuid.uuid4())
+            try:
+                execute_query_db("INSERT INTO subjects VALUES(?,?,?)", [new_subject_id, subject, 1])
+            except sqlite3.Error as e:
+                print(e.args[0], file=sys.stderr)
+                continue
 
+        subject_names += inferred_subjects
         for subject_name in subject_names:
             row = query_db('SELECT subject_id FROM subjects WHERE subject_name=?', [subject_name], one=True)
             if not row:
@@ -402,6 +412,18 @@ def add_question():
                 return jsonify(result)
             subject_id = row["subject_id"]
             execute_query_db('INSERT INTO template_in_subject VALUES (?,?)', [template_id, subject_id])
+            curriculums_row = query_db("SELECT curriculum_id FROM curriculums")
+            if curriculums_row:
+                for curriculum in curriculums_row:
+                    try:
+                        curriculum_id = curriculum["curriculum_id"]
+                        execute_query_db('INSERT INTO subject_in_curriculum VALUES (?,?)', [curriculum_id, subject_id])
+                    except sqlite3.Error as e:
+                        continue
+            try:
+                execute_query_db('INSERT INTO template_in_subject VALUES (?,?)', [template_id, subject_id])
+            except sqlite3.Error as e:
+                continue
     except sqlite3.Error as e:
         result["error_messages"].append(e.args[0])
         return jsonify(result)
@@ -534,6 +556,32 @@ def check_solutions_equality(solution1, solution2):
         print("algebra-problem-generator failed. " + str(e), file=sys.stderr)
 
 
+# Check @ Wolfram|Alpha if these two equations have the same solutions
+def check_equations_have_same_solutions(equation1, equation2):
+    if isinstance(equation2, str):
+        equation2 = [equation2]
+    wa_solutions = get_wolfram_solutions(equation1)
+
+    # input = "<math xmlns='http://www.w3.org/1998/Math/MathML'>"
+    # for i, sol in enumerate(wa_solutions + equation2):
+    #     if isinstance(sol, bytes):
+    #         sol = sol.decode('utf-8')
+    #     input += sol
+    #     if i != len(wa_solutions + equation2) - 1:
+    #         input += "<mo>,</mo>"
+    # input += "</math>"
+
+    wa_verify_solutions = get_wolfram_solutions(equation2[0])
+
+    print("Check Equation Equality:")
+    print("Equation1: " + str(equation1))
+    print("Equation2: " + str(equation2))
+    print("Solutions for equation1: " + str(wa_solutions))
+    print("Solutions for equation2: " + str(wa_verify_solutions))
+
+    return wa_verify_solutions == wa_solutions
+
+
 # ----------------------------------------------------------------------------------------------------------------------
 # Inner function that checks if student's solution is in final form like x=number.
 # ----------------------------------------------------------------------------------------------------------------------
@@ -591,7 +639,7 @@ def check_solution():
     student_id = user["user_id"]
 
     student_solutions = data.get("solutions")
-    question_index = data.get("index")  # TODO: INSECURE FIX LATER, make question come from server&session
+    question_index = data.get("index")
     solution_time = data.get("time")
     practice_id = get_student_practice_id(student_id)
 
@@ -630,54 +678,12 @@ def check_solution():
 
     if wa_verify_solutions == wa_solutions:
         result["correct"] = True
-
-    # if len(student_solutions) != len(wa_solutions):
-    #     result["error_messages"].append("There are " + ("more" if len(wa_solutions) > len(
-    #         student_solutions) else "less") + "solutions to the problem than what you said.")  # TODO: add a "tips" key where to put different tips like this
-    #     result["correct"] = False
-    # else:
-    #     amount_of_correct_solutions = 0
-    #     for wa_sol in wa_solutions:
-    #         wa_sol = "<math xmlns='http://www.w3.org/1998/Math/MathML'>" + wa_sol + "</math>"
-    #         for stu_sol in student_solutions:
-    #             if check_solutions_equality(wa_sol, stu_sol):
-    #                 amount_of_correct_solutions += 1
-    #     if amount_of_correct_solutions == len(wa_solutions):
-    #         result["correct"] = True
-
+    else:
+        check_equations_have_same_solutions(question, student_solutions)
     print("Question: " + question)
     print("Wolfram solutions for question: " + str(wa_solutions))
     print("Student solutions: " + str(student_solutions))
     print("Wolfram comparison of solutions: " + str(wa_verify_solutions))
-    # subject_ids_row = query_db(
-    #     'SELECT subject_id FROM subjects WHERE subject_name IN ({})'.format(','.join('?' * len(subject_names))),
-    #     subject_names)
-    # if not subject_ids_row:
-    #     result["error_messages"].append("Curriculum doesn't exist or doesn't have any subjects yet.")
-    #     return jsonify(result)
-    # subject_ids = [x["subject_id"] for x in subject_ids_row]
-    #
-    # for subject_id in subject_ids:
-    #     row = query_db('SELECT * FROM students_feedback_in_subject WHERE student_id=? AND subject_id=?',
-    #                    [student_id, subject_id])
-    #
-    #     if not row:
-    #         try:
-    #             execute_query_db("INSERT INTO students_feedback_in_subject VALUES (?,?,?,?,?)",
-    #                              [student_id, subject_id, 1, 1 if result["correct"] else 0,
-    #                               0 if result["correct"] else 1])
-    #         except sqlite3.Error as e:
-    #             result["error_messages"].append(e.args[0])
-    #             return jsonify(result)
-    #     else:
-    #         try:
-    #             execute_query_db(
-    #                 'UPDATE students_feedback_in_subject SET {0}={0}+1 WHERE student_id=? AND subject_id=?'.format(
-    #                     "number_of_correct_solutions" if result["correct"] else "number_of_wrong_solutions"),
-    #                 [student_id, subject_id])
-    #         except sqlite3.Error as e:
-    #             result["error_messages"].append(e.args[0])
-    #             return jsonify(result)
     step_by_step_data = ""
     mistake_type = None
     mistake_step_number = None
@@ -686,7 +692,92 @@ def check_solution():
     try:
         execute_query_db(
             "UPDATE student_solutions SET solution_time=?, final_answer=?, is_correct=?, step_by_step_data=?, mistake_type=?, mistake_step_number=?, datetime=? WHERE practice_id=? AND student_id=? AND template_id=?",
-            [solution_time, student_solutions[0], int(result["correct"]) if type(result["correct"]) is not None else None,
+            [solution_time, student_solutions[0],
+             int(result["correct"]) if type(result["correct"]) is not None else None,
+             step_by_step_data, mistake_type, mistake_step_number, datetime] + [practice_id, student_id, template_id])
+    except sqlite3.Error as e:
+        result["error_messages"].append(e.args[0])
+        return jsonify(result)
+
+    return jsonify(result)
+
+
+@app.route("/validate_solution", methods=["POST"])
+@cross_origin()
+# ----------------------------------------------------------------------------------------------------------------------
+# This function checks the student answer for the question.
+# This function gets the question,the subject of the question and the students solutions.
+# ----------------------------------------------------------------------------------------------------------------------
+def validate_solution():
+    result = {
+        "success": True,
+        "error_messages": [],
+        "correct": False
+
+    }
+    data = request.get_json(force=True)
+    sid = data.get("sid")
+    user = user_from_sid(sid)
+
+    if not sid:
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
+    if not user:
+        result["error_messages"].append("Invalid session_id.")
+        return jsonify(result)
+
+    student_id = user["user_id"]
+
+    solution_history = data.get("solution_history")
+    question_index = data.get("index")
+    solution_time = data.get("time")
+    practice_id = get_student_practice_id(student_id)
+    student_solutions = solution_history[-1]
+    question_row = query_db(
+        "SELECT * FROM practice_session_questions WHERE practice_id=? AND question_index=?",
+        [practice_id, question_index], one=True)
+    if not question_row:
+        result["success"] = False
+        result["error_messages"].append("No question found for this index and practice id.")
+        return jsonify(result)
+
+    question = question_row["question_mathml"]
+    template_id = question_row["template_id"]
+
+    index = len(solution_history) - 1
+
+    def binary_search(A, predicate, l, r):
+        if r >= l:
+            mid = int(l + (r - l) / 2)
+            if r - l == 0:
+                if not predicate(A[mid]):
+                    return mid
+                else:
+                    return None
+            elif predicate(A[mid]):
+                return binary_search(A, predicate, mid + 1, r)
+            else:
+                return binary_search(A, predicate, l, mid - 1)
+        else:
+            return None
+
+    mistake_step_number = binary_search(solution_history, lambda x: check_equations_have_same_solutions(question, x), 0,
+                  len(solution_history) - 1)
+    if mistake_step_number is None:
+        result["correct"] = True
+    # while not check_equations_have_same_solutions(question, solution_history[index]):
+
+
+
+    step_by_step_data = ""
+    mistake_type = "Invalid transition"
+    import datetime
+    datetime = datetime.datetime.utcnow().isoformat()
+    try:
+        execute_query_db(
+            "UPDATE student_solutions SET solution_time=?, final_answer=?, is_correct=?, step_by_step_data=?, mistake_type=?, mistake_step_number=?, datetime=? WHERE practice_id=? AND student_id=? AND template_id=?",
+            [solution_time, student_solutions[0],
+             int(result["correct"]) if type(result["correct"]) is not None else None,
              step_by_step_data, mistake_type, mistake_step_number, datetime] + [practice_id, student_id, template_id])
     except sqlite3.Error as e:
         result["error_messages"].append(e.args[0])
@@ -1057,6 +1148,28 @@ def generate_similar_question(template_id):
     return problem
 
 
+def infer_subjects_from_template_id(template_id):
+    template_mathml_row = query_db("SELECT template_mathml FROM question_templates WHERE template_id=?", [template_id],
+                                   one=True)
+    result = []
+    if not template_mathml_row:
+        return []
+    template_mathml = template_mathml_row["template_mathml"]
+    try:
+        subjects_string = subprocess.check_output(
+            ["dotnet", "run", "--project", apb_exec, "--gettermdomains", template_mathml]).decode('utf-8')
+
+        for line in subjects_string.strip().splitlines():
+            if line.startswith(";"):
+                result.append(line[1:])
+
+        print(subjects_string)
+
+    except subprocess.CalledProcessError as e:
+        print("algebra-problem-generator failed. " + str(e), file=sys.stderr)
+    return result
+
+
 # -------------------------------------------------------------------------------------------------------------------
 # Function that creates a practice session for a student.
 # -------------------------------------------------------------------------------------------------------------------
@@ -1106,6 +1219,7 @@ def create_practice_session():
     else:
         row = query_db("SELECT user_id FROM users")
         student_ids = [x["user_id"] for x in row]
+
     for student_id in student_ids:
         practice_id = str(uuid.uuid4())
         index = 0
@@ -1249,12 +1363,13 @@ def get_subjects_from_student_id(student_id):
     subjects = []
     row = query_db('SELECT template_id FROM student_solutions WHERE student_id=?', [student_id])
     if row:
-        for template_id in row["template_id"]:
+        for item in row:
+            template_id = item["template_id"]
             subject = get_subjects_from_template(template_id)
             if subject is not None:
                 subjects.append(subject)
 
-    return subjects
+    return list(set(sum(subjects, [])))
 
 
 # ----------------------------------------------------------------------------------------------------------------------
@@ -1266,23 +1381,33 @@ def get_wrong_right_stats():
     result = {
         "success": True,
         "error_messages": [],
-        "subjects": {}
+        "result": {}
     }
     data = request.get_json(force=True)
     sid = data.get("sid")
     user = user_from_sid(sid)
+
     if not sid:
-        result["success"] = False
         result["error_messages"].append("No session id given.")
         return jsonify(result)
-
     if not user:
-        result["success"] = False
         result["error_messages"].append("Invalid session_id.")
         return jsonify(result)
+    student_names = []
+    student_ids = []
+    if user["role"] == "Student":
+        student_names = [user["username"]]
+        student_ids = [user["user_id"]]
+    else:
+        students_rows = query_db("SELECT * FROM users")
+        student_names = [x["username"] for x in students_rows]
+        student_ids = [x["user_id"] for x in students_rows]
 
-    rows = query_db('SELECT * FROM student_solutions WHERE student_id=?', [user["user_id"]])
-    subjects = get_subjects_from_student_id(user["user_id"])
+    rows = query_db(
+        'SELECT * FROM student_solutions WHERE student_id IN ({})'.format(','.join('?' * len(student_ids))),
+        student_ids)
+    subjects = list(set(sum([get_subjects_from_student_id(student_id) for student_id in student_ids], [])))
+
     if len(subjects) > 0:
         for subject in subjects:
             correct_count = 0
@@ -1297,7 +1422,7 @@ def get_wrong_right_stats():
                                 correct_count += 1
                             else:
                                 wrong_count += 1
-            subjects[subject] = {"wrong": wrong_count, "correct": correct_count}
+            result["result"][subject] = {"wrong": wrong_count, "correct": correct_count}
 
     return jsonify(result)
 
@@ -1418,38 +1543,41 @@ def get_wrong_answers_count_from_student_name(student_name):
     return wrongs_counter
 
 
-#-----------------------------------------------------------------------------------------------------------------------
-#Inner function that gets a student name and returns his mistakes.
-#-----------------------------------------------------------------------------------------------------------------------
+# -----------------------------------------------------------------------------------------------------------------------
+# Inner function that gets a student name and returns his mistakes.
+# -----------------------------------------------------------------------------------------------------------------------
 def get_all_mistakes_from_student_name(student_name):
     student_id_row = query_db('SELECT user_id FROM users WHERE username=?', [student_name], one=True)
     if not student_id_row:
         return None
     student_id = student_id_row["user_id"]
-    mistakes = query_db('SELECT DISTINCT mistake_type FROM student_solutions WHERE student_id=?' ,[student_id])
+    mistakes = query_db('SELECT DISTINCT mistake_type FROM student_solutions WHERE student_id=?', [student_id])
     if not mistakes:
         return None
+    return list(filter(None.__ne__, [mistake[0] for mistake in mistakes]))
 
-    return mistakes
 
-#-----------------------------------------------------------------------------------------------------------------------
-#Inner function that gets student_name and mistake_type and returns the number of mistakes from that type the student did.
-#-----------------------------------------------------------------------------------------------------------------------
-def get_mistake_type_counter_from_student_(student_name,mistake_type):
+# -----------------------------------------------------------------------------------------------------------------------
+# Inner function that gets student_name and mistake_type and returns the number of mistakes from that type the student did.
+# -----------------------------------------------------------------------------------------------------------------------
+def get_mistake_type_counter_from_student_(student_name, mistake_type):
     student_id_row = query_db('SELECT user_id FROM users WHERE username=?', [student_name], one=True)
     if not student_id_row:
         return None
     student_id = student_id_row["user_id"]
-    counter = query_db('SELECT COUNT(student_id,mistake_type) FROM student_solutions WHERE student_id=? AND mistake_type=?' ,[student_id,mistake_type])
+    counter = query_db(
+        'SELECT COUNT(student_id,mistake_type) FROM student_solutions WHERE student_id=? AND mistake_type=?',
+        [student_id, mistake_type])
     if not counter:
         return None
     return counter
 
+
 @app.route('/get_mistake_type_stats', methods=["GET", "POST"])
 @cross_origin()
-#------------------------------------------------------------------------------------------------------------------------
-#Function that returns mistake_type stats of a specific student or all of the students
-#------------------------------------------------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------------------------------------------------
+# Function that returns mistake_type stats of a specific student or all of the students
+# ------------------------------------------------------------------------------------------------------------------------
 def get_mistake_type_stats():
     result = {
         "success": True,
@@ -1458,30 +1586,44 @@ def get_mistake_type_stats():
 
     }
     data = request.get_json(force=True)
-    student_name = data.get("student_name")
-    if student_name:
-        student_names = [student_name]
+    sid = data.get("sid")
+    user = user_from_sid(sid)
+
+    if not sid:
+        result["error_messages"].append("No session id given.")
+        return jsonify(result)
+    if not user:
+        result["error_messages"].append("Invalid session_id.")
+        return jsonify(result)
+    student_names = []
+    if user["role"] == "Student":
+        student_names = [user["username"]]
     else:
         student_names_row = query_db("SELECT * FROM users")
         student_names = [x["username"] for x in student_names_row]
 
+    all_mistakes = set()
+    all_mistakes_counter = 0
     for student_name in student_names:
         wrongs_counter = get_wrong_answers_count_from_student_name(student_name)
         student_mistakes = get_all_mistakes_from_student_name(student_name)
+        all_mistakes = set.union(set(student_mistakes))
         if wrongs_counter is None or student_mistakes is None:
             continue
 
         for mistake in student_mistakes:
-            mistake_counter = get_mistake_type_counter_from_student_(student_name,mistake)
+            mistake_counter = get_mistake_type_counter_from_student_(student_name, mistake)
+            all_mistakes_counter += mistake_counter
             if mistake_counter is None:
                 continue
 
             result["result"][student_name] = {}
-            result["result"][student_name]["mistake_type"] = str(mistake)
-            result["result"][student_name]["mistake_type_rate"] = str(mistake_counter / wrongs_counter)
+            result["result"][student_name][mistake] = mistake_counter / wrongs_counter
+    for mistake in all_mistakes:
+        result["result"][mistake] = sum(
+            (result["result"][student_name].get(mistake, 0) for student_name in student_names))
 
     return jsonify(result)
-
 
 
 if __name__ == '__main__':
