@@ -1570,7 +1570,8 @@ def get_mistake_type_counter_from_student_(student_name, mistake_type):
         [student_id, mistake_type])
     if not counter:
         return None
-    return counter
+
+    return counter[0]
 
 
 @app.route('/get_mistake_type_stats', methods=["GET", "POST"])
