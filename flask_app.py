@@ -1439,7 +1439,7 @@ def get_all_mistakes_from_student_name(student_name):
     if not student_id_row:
         return None
     student_id = student_id_row["user_id"]
-    mistakes = query_db('SELECT DISTINCT mistake_type FROM student_solutions WHERE student_id=?' ,[student_id])
+    mistakes = query_db('SELECT DISTINCT mistake_type FROM student_solutions WHERE student_id=?',[student_id])
     if not mistakes:
         return None
 
@@ -1448,15 +1448,16 @@ def get_all_mistakes_from_student_name(student_name):
 #-----------------------------------------------------------------------------------------------------------------------
 #Inner function that gets student_name and mistake_type and returns the number of mistakes from that type the student did.
 #-----------------------------------------------------------------------------------------------------------------------
-def get_mistake_type_counter_from_student_(student_name,mistake_type):
+def get_mistake_type_counter_from_student(student_name,mistake_type):
     student_id_row = query_db('SELECT user_id FROM users WHERE username=?', [student_name], one=True)
     if not student_id_row:
         return None
     student_id = student_id_row["user_id"]
-    counter = query_db('SELECT COUNT(student_id,mistake_type) FROM student_solutions WHERE student_id=? AND mistake_type=?' ,[student_id,mistake_type])
-    if not counter:
+    counter = query_db('SELECT count(solution_id) FROM student_solutions WHERE student_id=? AND mistake_type=?' ,[student_id , mistake_type] , one=True)
+    if counter is None:
         return None
-    return counter
+
+    return counter[0]
 
 @app.route('/get_mistake_type_stats', methods=["GET", "POST"])
 @cross_origin()
@@ -1485,7 +1486,7 @@ def get_mistake_type_stats():
             continue
 
         for mistake in student_mistakes:
-            mistake_counter = get_mistake_type_counter_from_student_(student_name,mistake)
+            mistake_counter = get_mistake_type_counter_from_student(student_name,mistake[0])
             if mistake_counter is None:
                 continue
 
