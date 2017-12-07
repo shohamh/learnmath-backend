@@ -701,7 +701,6 @@ def check_solution():
 
     return jsonify(result)
 
-
 @app.route("/validate_solution", methods=["POST"])
 @cross_origin()
 # ----------------------------------------------------------------------------------------------------------------------
@@ -728,11 +727,11 @@ def validate_solution():
 
     student_id = user["user_id"]
 
-    solution_history = data.get("solution_history")
+    student_solutions = data.get("solutions")
     question_index = data.get("index")
     solution_time = data.get("time")
     practice_id = get_student_practice_id(student_id)
-    student_solutions = solution_history[-1]
+
     question_row = query_db(
         "SELECT * FROM practice_session_questions WHERE practice_id=? AND question_index=?",
         [practice_id, question_index], one=True)
@@ -744,33 +743,34 @@ def validate_solution():
     question = question_row["question_mathml"]
     template_id = question_row["template_id"]
 
-    index = len(solution_history) - 1
+    if isinstance(student_solutions, str):
+        student_solutions = [student_solutions]
 
-    def binary_search(A, predicate, l, r):
-        if r >= l:
-            mid = int(l + (r - l) / 2)
-            if r - l == 0:
-                if not predicate(A[mid]):
-                    return mid
-                else:
-                    return None
-            elif predicate(A[mid]):
-                return binary_search(A, predicate, mid + 1, r)
-            else:
-                return binary_search(A, predicate, l, mid - 1)
-        else:
-            return None
+    # TODO: [0] is wrong?
+    wa_solutions = get_wolfram_solutions(question)
 
-    mistake_step_number = binary_search(solution_history, lambda x: check_equations_have_same_solutions(question, x), 0,
-                  len(solution_history) - 1)
-    if mistake_step_number is None:
+    input = "<math xmlns='http://www.w3.org/1998/Math/MathML'>"
+    for i, sol in enumerate(wa_solutions + student_solutions):
+        if isinstance(sol, bytes):
+            sol = sol.decode('utf-8')
+        input += sol
+        if i != len(wa_solutions + student_solutions) - 1:
+            input += "<mo>,</mo>"
+    input += "</math>"
+
+    wa_verify_solutions = get_wolfram_solutions(input)
+
+    if wa_verify_solutions == wa_solutions:
         result["correct"] = True
-    # while not check_equations_have_same_solutions(question, solution_history[index]):
-
-
-
+    else:
+        check_equations_have_same_solutions(question, student_solutions)
+    print("Question: " + question)
+    print("Wolfram solutions for question: " + str(wa_solutions))
+    print("Student solutions: " + str(student_solutions))
+    print("Wolfram comparison of solutions: " + str(wa_verify_solutions))
     step_by_step_data = ""
-    mistake_type = "Invalid transition"
+    mistake_type = None
+    mistake_step_number = None
     import datetime
     datetime = datetime.datetime.utcnow().isoformat()
     try:
@@ -784,6 +784,88 @@ def validate_solution():
         return jsonify(result)
 
     return jsonify(result)
+# @app.route("/validate_solution", methods=["POST"])
+# @cross_origin()
+# # ----------------------------------------------------------------------------------------------------------------------
+# # This function checks the student answer for the question.
+# # This function gets the question,the subject of the question and the students solutions.
+# # ----------------------------------------------------------------------------------------------------------------------
+# def validate_solution():
+#     result = {
+#         "success": True,
+#         "error_messages": [],
+#         "correct": False
+#
+#     }
+#     data = request.get_json(force=True)
+#     sid = data.get("sid")
+#     user = user_from_sid(sid)
+#
+#     if not sid:
+#         result["error_messages"].append("No session id given.")
+#         return jsonify(result)
+#     if not user:
+#         result["error_messages"].append("Invalid session_id.")
+#         return jsonify(result)
+#
+#     student_id = user["user_id"]
+#
+#     solution_history = data.get("solution_history")
+#     question_index = data.get("index")
+#     solution_time = data.get("time")
+#     practice_id = get_student_practice_id(student_id)
+#     student_solutions = solution_history[-1]
+#     question_row = query_db(
+#         "SELECT * FROM practice_session_questions WHERE practice_id=? AND question_index=?",
+#         [practice_id, question_index], one=True)
+#     if not question_row:
+#         result["success"] = False
+#         result["error_messages"].append("No question found for this index and practice id.")
+#         return jsonify(result)
+#
+#     question = question_row["question_mathml"]
+#     template_id = question_row["template_id"]
+#
+#     index = len(solution_history) - 1
+#
+#     # def binary_search(A, predicate, l, r):
+#     #     if r >= l:
+#     #         mid = int(l + (r - l) / 2)
+#     #         if r - l == 0:
+#     #             if not predicate(A[mid]):
+#     #                 return mid
+#     #             else:
+#     #                 return None
+#     #         elif predicate(A[mid]):
+#     #             return binary_search(A, predicate, mid + 1, r)
+#     #         else:
+#     #             return binary_search(A, predicate, l, mid - 1)
+#     #     else:
+#     #         return None
+#
+#     mistake_step_number = binary_search(solution_history, lambda x: check_equations_have_same_solutions(question, x), 0,
+#                   len(solution_history) - 1)
+#     if mistake_step_number is None:
+#         result["correct"] = True
+#     # while not check_equations_have_same_solutions(question, solution_history[index]):
+#
+#
+#
+#     step_by_step_data = ""
+#     mistake_type = "Invalid transition"
+#     import datetime
+#     datetime = datetime.datetime.utcnow().isoformat()
+#     try:
+#         execute_query_db(
+#             "UPDATE student_solutions SET solution_time=?, final_answer=?, is_correct=?, step_by_step_data=?, mistake_type=?, mistake_step_number=?, datetime=? WHERE practice_id=? AND student_id=? AND template_id=?",
+#             [solution_time, student_solutions[0],
+#              int(result["correct"]) if type(result["correct"]) is not None else None,
+#              step_by_step_data, mistake_type, mistake_step_number, datetime] + [practice_id, student_id, template_id])
+#     except sqlite3.Error as e:
+#         result["error_messages"].append(e.args[0])
+#         return jsonify(result)
+#
+#     return jsonify(result)
 
 
 @app.route("/get_feedback", methods=["GET", "POST"])
