@@ -664,6 +664,9 @@ def check_solution():
         return jsonify(result)
 
     wa_solutions = get_wolfram_solutions(question)
+    if not wa_solutions:
+        result["correct"] = False
+        return jsonify(result)
 
     input = "<math xmlns='http://www.w3.org/1998/Math/MathML'>"
     for i, sol in enumerate(wa_solutions + student_solutions):
@@ -675,8 +678,9 @@ def check_solution():
     input += "</math>"
 
     wa_verify_solutions = get_wolfram_solutions(input)
-
-    if wa_verify_solutions == wa_solutions:
+    if "no solution" in wa_verify_solutions:
+        result["correct"] = False
+    elif wa_verify_solutions == wa_solutions:
         result["correct"] = True
     else:
         check_equations_have_same_solutions(question, student_solutions)
@@ -700,6 +704,7 @@ def check_solution():
         return jsonify(result)
 
     return jsonify(result)
+
 
 @app.route("/validate_solution", methods=["POST"])
 @cross_origin()
@@ -760,7 +765,9 @@ def validate_solution():
 
     wa_verify_solutions = get_wolfram_solutions(input)
 
-    if wa_verify_solutions == wa_solutions:
+    if "no solution" in wa_verify_solutions:
+        result["correct"] = False
+    elif wa_verify_solutions == wa_solutions:
         result["correct"] = True
     else:
         check_equations_have_same_solutions(question, student_solutions)
@@ -784,12 +791,14 @@ def validate_solution():
         return jsonify(result)
 
     return jsonify(result)
+
+
 # @app.route("/validate_solution", methods=["POST"])
 # @cross_origin()
-# # ----------------------------------------------------------------------------------------------------------------------
+# # ------------------------------------------------------------------------------------------------------------------
 # # This function checks the student answer for the question.
 # # This function gets the question,the subject of the question and the students solutions.
-# # ----------------------------------------------------------------------------------------------------------------------
+# # ------------------------------------------------------------------------------------------------------------------
 # def validate_solution():
 #     result = {
 #         "success": True,
